@@ -1,0 +1,51 @@
+# LJM source repository (Layer 1)
+#
+# This .gitignore turns the vault root into a source-only git repository.
+# Memory, Buffer, Archive, Metrics, and per-book ingestion manifests are
+# all excluded — they live in the encrypted Layer-2 backup instead.
+# See System/Backup.md for the full layered model.
+
+# ── Memory and buffer state (encrypted-backup tier) ──────────────────────
+Buffer/
+Memory/
+Archive/
+
+# Metrics: only the audit trail belongs in source; the rest is local state.
+Metrics/
+!Metrics/.gitkeep
+
+# Per-book ingestion manifests — track per-vault state, not source.
+# The protocol README (Ingestion/_README.md) IS source and stays tracked.
+Ingestion/manifest_*.md
+
+# ── Build artifacts and rebuildables ─────────────────────────────────────
+agent/jm
+agent/jm.exe
+agent/jm.test
+agent/jm.test.exe
+agent/coverage.out
+agent/*.prof
+
+# ── Editor and OS state ──────────────────────────────────────────────────
+.obsidian/workspace.json
+.obsidian/workspace-mobile.json
+.obsidian/graph.json
+.obsidian/cache
+.obsidian/plugins/*/data.json
+
+*.tmp
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── Backup target directories (when sibling/in-tree) ─────────────────────
+Backup/
+backups/
+*.age
+*.meta.json
+
+# ── Local-only Claude settings (machine-specific) ────────────────────────
+.claude/settings.local.json
