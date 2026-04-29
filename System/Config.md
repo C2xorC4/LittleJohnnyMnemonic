@@ -324,13 +324,13 @@ See [[System/Backup]] for the operational guide and key escrow protocol.
 
 ```yaml
 backup_enabled: false                                      # opt-in. set true after init-key + first round-trip verified.
-backup_age_recipient: ""                                   # public key (age1...). Set by `jm backup --init-key`.
+backup_age_recipient: "age1jpelta6nwk8nphrct9d9h4y66sda8eez83kwsg2jxym9km7xppaqa3ftax"                                   # public key (age1...). Set by `jm backup --init-key`.
 backup_age_identity_path: ""                               # private key file. Empty = ~/.config/ljm/age.key.
-backup_local_target_dir: ""                                # durability floor — always written first. Empty = sibling of vault root.
-backup_remote_url: ""                                      # private git URL holding encrypted blobs (optional).
-backup_remote_clone_path: ""                               # local working clone of remote_url. Empty = <local_target_dir>/.remote-clone.
+backup_local_target_dir: "D:\Repos\LLM\LittleJohnnyMnemonic-LocalSync"                                # durability floor — always written first. Empty = sibling of vault root.
+backup_remote_url: "https://github.com/C2xorC4/LittleJohnnyMnemonic-Sync.git"                                      # private git URL holding encrypted blobs (optional).
+backup_remote_clone_path: "D:\Repos\LLM\LittleJohnnyMnemonic-Sync"                               # local working clone of remote_url. Empty = <local_target_dir>/.remote-clone.
 backup_push_on_backup: true                                # if false, only the local copy is made.
-backup_retention_keep_last: 30                             # local-dir retention. Remote retention is deferred.
+backup_retention_keep_last: 0                              # 0 = keep every backup (recommended). Positive N = local-dir retention; remote is never auto-pruned.
 backup_cooldown_minutes: 60                                # min interval between automated (hook-driven) backups.
 ```
 
@@ -354,3 +354,10 @@ backup_cooldown_minutes: 60                                # min interval betwee
 - `Metrics/rule_firings.jsonl` — transient operational log
 - `.git/`, `Backup/` — metadata and recursion guard
 - `*.tmp`, `*.swp`, `.DS_Store`, `Thumbs.db` — OS junk
+
+**Conflict resolution:** Push is always preceded by `git pull --ff-only`.
+A non-fast-forward result is a **hard failure** — the user must resolve
+the divergence (merge or rebase) by hand before the next backup will
+push. Encrypted blobs can't be auto-merged, and conflicting memory
+states deserve deliberate review. The local copy is the durability
+floor and is intact regardless of push outcome.

@@ -308,6 +308,14 @@ func cmdConsolidate(vaultRoot string, args []string) {
 		fmt.Println("  [DRY RUN] No log written.")
 	}
 
+	if !*dryRun {
+		// Post-consolidation backup hook. Cooldown-gated and fail-soft —
+		// a backup failure never blocks consolidation completion.
+		if skipped, err := MaybeRunBackup(cfg, vaultRoot, "consolidate"); err == nil && !skipped {
+			// Successful run already logged to stderr by MaybeRunBackup.
+		}
+	}
+
 	fmt.Println("\n=== Consolidation complete ===")
 }
 

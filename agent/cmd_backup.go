@@ -258,10 +258,21 @@ func applyLocalRetention(dir string, keep int) {
 }
 
 // pushBlobToRemote shells out to git in a working clone of the configured
-// remote. The clone is created on first use at cfg.BackupRemoteClonePath
-// (or a sibling default if unset). The blob and meta are copied in,
-// committed, and pushed. We use the user's git config (credential helpers,
-// SSH agent, etc.) so we don't have to handle auth ourselves.
+// remote. Workflow is **always pull-then-push, never auto-merge**:
+//
+//   - if the local clone has commits, run `git pull --ff-only` first.
+//     A non-fast-forward result is a hard failure — the user must
+//     resolve the divergence by hand before the next backup will push
+//     (this is intentional; encrypted blobs can't be auto-merged and
+//     conflicting memory states deserve deliberate review).
+//   - on first push to an empty remote (unborn HEAD locally), skip the
+//     pull entirely — there's nothing to pull yet.
+//   - the push uses `-u origin HEAD` so the first run sets upstream
+//     and subsequent runs fast-forward.
+//
+// The clone is created on first use at cfg.BackupRemoteClonePath if it
+// doesn't already exist. Auth comes from the user's git config
+// (credential helpers, SSH agent, etc.) — no creds handled here.
 func pushBlobToRemote(cfg Config, remoteURL, blobPath, metaPath string) error {
 	clonePath := strings.TrimSpace(cfg.BackupRemoteClonePath)
 	if clonePath == "" {
@@ -269,7 +280,6 @@ func pushBlobToRemote(cfg Config, remoteURL, blobPath, metaPath string) error {
 	}
 
 	if _, err := os.Stat(filepath.Join(clonePath, ".git")); err != nil {
-		// Need to clone first.
 		if err := os.MkdirAll(filepath.Dir(clonePath), 0o755); err != nil {
 			return fmt.Errorf("make parent for clone: %w", err)
 		}
@@ -279,9 +289,16 @@ func pushBlobToRemote(cfg Config, remoteURL, blobPath, metaPath string) error {
 		}
 	}
 
-	// Pull latest so we don't push an outdated history.
-	if out, err := runGitIn(clonePath, "pull", "--ff-only"); err != nil {
-		return fmt.Errorf("git pull: %v: %s", err, strings.TrimSpace(out))
+	// Pull only if we already have local commits. An unborn HEAD means
+	// this is the first push to an empty remote and there's nothing to
+	// pull. `git rev-parse --verify HEAD` returns non-zero on unborn.
+	if _, err := runGitIn(clonePath, "rev-parse", "--verify", "HEAD"); err == nil {
+		if out, err := runGitIn(clonePath, "pull", "--ff-only"); err != nil {
+			return fmt.Errorf("git pull --ff-only failed — remote has changes that don't fast-forward. "+
+				"Resolve the divergence in %s manually (merge or rebase) before the next backup. "+
+				"Local copy of this backup is intact at %s. (%v: %s)",
+				clonePath, blobPath, err, strings.TrimSpace(out))
+		}
 	}
 
 	dstBlob := filepath.Join(clonePath, filepath.Base(blobPath))
@@ -298,13 +315,16 @@ func pushBlobToRemote(cfg Config, remoteURL, blobPath, metaPath string) error {
 	}
 	commitMsg := fmt.Sprintf("backup %s", strings.TrimSuffix(filepath.Base(blobPath), ".age"))
 	if out, err := runGitIn(clonePath, "commit", "-m", commitMsg); err != nil {
-		// Empty commit (no changes) is rare but possible — surface as warning, not failure.
+		// "nothing to commit" can happen if the same blob (same manifest hash)
+		// was already added in a prior run. Treat as success, not failure.
 		if strings.Contains(out, "nothing to commit") {
 			return nil
 		}
 		return fmt.Errorf("git commit: %v: %s", err, strings.TrimSpace(out))
 	}
-	if out, err := runGitIn(clonePath, "push"); err != nil {
+	// `-u origin HEAD` works for both the first push (sets upstream tracking)
+	// and subsequent pushes (fast-forward).
+	if out, err := runGitIn(clonePath, "push", "-u", "origin", "HEAD"); err != nil {
 		return fmt.Errorf("git push: %v: %s", err, strings.TrimSpace(out))
 	}
 	return nil
@@ -343,6 +363,69 @@ func recordLastBackup(vaultRoot string, t time.Time) {
 		return
 	}
 	_ = os.WriteFile(path, data, 0o644)
+}
+
+// readLastBackup returns the timestamp of the most recent successful backup,
+// or the zero time if no record exists yet (forces the first auto-backup
+// through immediately).
+func readLastBackup(vaultRoot string) time.Time {
+	path := filepath.Join(vaultRoot, "Metrics", "last_backup.json")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return time.Time{}
+	}
+	var payload struct {
+		LastBackupUTC string `json:"last_backup_utc"`
+	}
+	if err := json.Unmarshal(data, &payload); err != nil {
+		return time.Time{}
+	}
+	t, err := time.Parse(time.RFC3339, payload.LastBackupUTC)
+	if err != nil {
+		return time.Time{}
+	}
+	return t
+}
+
+// MaybeRunBackup is the cooldown-gated, fail-soft entry point used by the
+// post-consolidation and stop hooks. Returns:
+//   - skipped=true when cfg.BackupEnabled is false, the recipient isn't
+//     configured, or the cooldown window hasn't elapsed (no error logged
+//     in those cases — they're normal operation)
+//   - skipped=false on attempt; err non-nil only on actual failure to
+//     produce the local copy. Push failures are absorbed into res and
+//     never surface as errors here, so a bad network never blocks
+//     consolidation.
+//
+// The "trigger" string is included in stderr-logged warnings so multi-hook
+// invocations can be told apart at a glance ("consolidate" vs "stop").
+func MaybeRunBackup(cfg Config, vaultRoot, trigger string) (skipped bool, err error) {
+	if !cfg.BackupEnabled {
+		return true, nil
+	}
+	if strings.TrimSpace(cfg.BackupAgeRecipient) == "" {
+		return true, nil
+	}
+	cooldown := time.Duration(cfg.BackupCooldownMinutes) * time.Minute
+	if cooldown > 0 {
+		last := readLastBackup(vaultRoot)
+		if !last.IsZero() && time.Since(last) < cooldown {
+			return true, nil
+		}
+	}
+
+	res, err := RunBackup(cfg, vaultRoot, BackupOpts{})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "[backup:%s] failed: %v\n", trigger, err)
+		return false, err
+	}
+	fmt.Fprintf(os.Stderr, "[backup:%s] wrote %s (%d files, %s)\n",
+		trigger, filepath.Base(res.BlobPath), res.Meta.FileCount,
+		humanBytes(res.Meta.UncompressedB))
+	if res.PushError != "" {
+		fmt.Fprintf(os.Stderr, "[backup:%s] push warning: %s\n", trigger, res.PushError)
+	}
+	return false, nil
 }
 
 // runInitKey generates a fresh X25519 keypair, writes the private key to

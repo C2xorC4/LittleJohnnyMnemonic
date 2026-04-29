@@ -310,7 +310,7 @@ func DefaultConfig() Config {
 		BackupRemoteURL:         "",
 		BackupRemoteClonePath:   "",
 		BackupPushOnBackup:      true,
-		BackupRetentionKeepLast: 30,
+		BackupRetentionKeepLast: 0, // 0 = keep every backup (recovery + conflict-resolution intent)
 		BackupCooldownMinutes:   60,
 	}
 }

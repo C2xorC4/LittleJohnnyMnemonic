@@ -80,6 +80,61 @@ diff -r D:/Repos/LLM/LittleJohnnyMnemonic ./tmp-restore
 The diff should show only the documented exclusions (`jm.exe`,
 `workspace.json`, `rule_firings.jsonl`, `.git/`).
 
+## Automated backups (hooks)
+
+Two automatic trigger points fire `MaybeRunBackup` when `backup_enabled: true`:
+
+1. **Post-consolidation** — at the end of every successful (non-dry-run)
+   `jm consolidate`, after Phase 4 logging. Coherent checkpoint: buffer has
+   just been integrated into Memory, vault is in a clean state.
+2. **Stop hook** — at the end of every Claude Code session, via the
+   existing `jm hook stop` integration. Runs unconditionally regardless of
+   whether behavioral rules fire.
+
+Both triggers are gated by `backup_cooldown_minutes` (default 60). The most
+recent backup timestamp is recorded at `Metrics/last_backup.json`. If a
+trigger fires inside the cooldown window, it skips silently.
+
+Both triggers are **fail-soft**: a backup failure prints a warning to
+stderr but never blocks the parent flow. The local-dir copy is the
+durability floor — even if the git push fails, your data is on disk.
+
+To disable automation while keeping manual `jm backup` available, set
+`backup_enabled: false`. To force a backup outside the cooldown window,
+just run `jm backup` directly.
+
+## Conflict resolution and retention
+
+**Always pull, then push. Never auto-merge.** Before every push, `jm`
+runs `git pull --ff-only` against the configured remote (skipped only
+on the very first push, when there are no commits to pull). A
+non-fast-forward result is a **hard failure**:
+
+- The local encrypted blob is still on disk in `backup_local_target_dir`
+  — durability is unaffected.
+- The user must resolve the divergence in `backup_remote_clone_path`
+  manually (merge or rebase) before the next backup will push.
+- This is intentional. Encrypted blobs cannot be auto-merged, and
+  conflicting memory states deserve deliberate human review — that's
+  the whole point of having the secondary repo for memory states.
+
+**Retention is off by default.** `backup_retention_keep_last: 0` keeps
+every backup forever, locally and remotely. Reasons:
+
+- Recovery of deprecated/forgotten memories. A consolidation might
+  archive an entry that turns out to matter weeks later — it's still
+  in any backup taken before the archival.
+- Conflict resolution. Resolving a divergence often means picking
+  one branch's version of a memory over another's; you need both to
+  do that.
+- Storage cost is trivial. Each backup is ~500 KB encrypted. A daily
+  backup for a year is ~180 MB.
+
+To enable local-dir pruning anyway (e.g., the host has constrained
+disk), set `backup_retention_keep_last: N`. The remote is **never**
+auto-pruned by `jm` regardless of this setting — git history is
+authoritative for old states.
+
 ## Operational commands
 
 | Command | What it does |
