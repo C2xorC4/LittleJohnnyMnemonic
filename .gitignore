@@ -17,6 +17,7 @@ Metrics/
 # Per-book ingestion manifests — track per-vault state, not source.
 # The protocol README (Ingestion/_README.md) IS source and stays tracked.
 Ingestion/manifest_*.md
+Ingestion/INDEX.md
 
 # ── Build artifacts and rebuildables ─────────────────────────────────────
 agent/jm
