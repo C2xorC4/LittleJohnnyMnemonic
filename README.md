@@ -5,9 +5,10 @@ memory; ACT-R-style activation, CLS-inspired rate separation, progressive
 compression, spreading-activation retrieval, and daydream agents that
 explore the graph in the background.
 
-> **Status:** working prototype. The agent is in daily use against a live
-> vault. Public source release is gated on automatic content sanitization
-> (planned, not yet built).
+> **Status:** working prototype, in daily use. This repository holds the
+> source, protocol, and tooling — no memory content. Operator memory
+> lives in a separate private repository as encrypted blobs (see
+> [Two-repo durability model](#two-repo-durability-model)).
 
 ## What LJM is
 
@@ -52,8 +53,11 @@ Memory state is too sensitive to live on a single workstation, and too
 sensitive to live in plaintext on a remote. LJM separates concerns into
 two repositories:
 
-1. **This repository** — code, protocol, agent definitions, schema.
-   Eventually public after sanitization; private today.
+1. **This repository** (public) — code, protocol, agent definitions,
+   schema. No memory content; `.gitignore` keeps `Buffer/`, `Memory/`,
+   `Archive/`, and `Metrics/` out of source. A separate
+   `jm publish` workflow for emitting sanitized memory snapshots is
+   on the roadmap but not required for the source itself.
 2. **Encrypted vault repo** (separate, always private) — `.age`
    blobs of the live vault, written by `jm backup` and pulled by
    `jm restore-backup`. Encryption is X25519+ChaCha20-Poly1305 via
