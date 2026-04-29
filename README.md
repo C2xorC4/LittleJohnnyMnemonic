@@ -32,6 +32,24 @@ Inspirations:
 
 Authoritative spec: [`CLAUDE.md`](CLAUDE.md).
 
+## Behaviour in practice — self-assessments
+
+The substrate produces an audit trail you can read. Periodic
+post-`/clear` self-assessments capture how the system performs against
+its design intent: what survived the context boundary, what the hooks
+reconstructed, what daydream agents surfaced about the system itself,
+where the gap between *memory as context* and *memory as constraint*
+showed up in real work, and what the substrate-stored knowledge gives
+the agent that pretrained weights do not.
+
+- [2026-04-29 — post-`/clear` self-assessment](docs/reflections/2026-04-29_postclear.md)
+
+These are written by the agent in a fresh session against the same
+vault, with no access to the conversation thread that produced the
+material being assessed. Useful as a behavioural reference for anyone
+evaluating LJM from a research, employment, or comparative-systems
+perspective.
+
 ## Architecture overview
 
 | Tier | Path | What lives here |
