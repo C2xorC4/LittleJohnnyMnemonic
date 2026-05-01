@@ -225,6 +225,11 @@ func ParseBufferEntry(path string) (*BufferEntry, error) {
 		Related:          parseStringList(m["related"]),
 		Pinned:           parseBool(m["pinned"]),
 		HoldCount:        parseInt(m["hold_count"]),
+		DaydreamKind:       strings.TrimSpace(m["daydream_kind"]),
+		DaydreamMode:       strings.TrimSpace(m["daydream_mode"]),
+		Priority:           strings.TrimSpace(m["priority"]),
+		Relationship:       strings.TrimSpace(m["relationship"]),
+		SurfacedInSessions: parseStringList(m["surfaced_in_sessions"]),
 		Body:             strings.TrimSpace(body),
 		FilePath:         path,
 		FileName:         filepath.Base(path),
@@ -550,6 +555,24 @@ func WriteBufferEntry(entry *BufferEntry) error {
 	}
 	if entry.HoldCount > 0 {
 		buf.WriteString(fmt.Sprintf("hold_count: %d\n", entry.HoldCount))
+	}
+	if entry.HeldForCrossSession {
+		buf.WriteString("held_for_cross_session: true\n")
+	}
+	if entry.DaydreamKind != "" {
+		buf.WriteString(fmt.Sprintf("daydream_kind: %s\n", entry.DaydreamKind))
+	}
+	if entry.DaydreamMode != "" {
+		buf.WriteString(fmt.Sprintf("daydream_mode: %s\n", entry.DaydreamMode))
+	}
+	if entry.Priority != "" {
+		buf.WriteString(fmt.Sprintf("priority: %s\n", entry.Priority))
+	}
+	if entry.Relationship != "" {
+		buf.WriteString(fmt.Sprintf("relationship: %s\n", entry.Relationship))
+	}
+	if len(entry.SurfacedInSessions) > 0 {
+		writeStringList(&buf, "surfaced_in_sessions", entry.SurfacedInSessions)
 	}
 
 	buf.WriteString("---\n\n")

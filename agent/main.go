@@ -33,6 +33,8 @@ Commands:
   config       Display current configuration
   backup       Encrypted vault backup (age-encrypted tar.gz, local + optional git remote)
   restore-backup  Decrypt and extract a backup (distinct from "restore" — see -h)
+  autodream    Auto-daydream scheduler (jitter + mode + replay; see Config.md)
+  daydream     Daydream finding triage — review or list pending entries
 
 Use "jm <command> -h" for command-specific help.
 `
@@ -91,6 +93,10 @@ func main() {
 		cmdBackup(vaultRoot, args)
 	case "restore-backup":
 		cmdRestoreBackup(vaultRoot, args)
+	case "autodream":
+		cmdAutodream(vaultRoot, args)
+	case "daydream":
+		cmdDaydream(vaultRoot, args)
 	case "-h", "--help", "help":
 		fmt.Print(usage)
 	default:

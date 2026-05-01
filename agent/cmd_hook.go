@@ -77,12 +77,62 @@ func readHookInput() (*hookInput, error) {
 	return &input, nil
 }
 
+// writeSessionHeartbeat appends a single JSONL line to
+// Metrics/session_heartbeat.jsonl recording that real activity occurred at
+// the given moment. Used by autodream's activity-based skip detection: a
+// recent heartbeat means a session is doing real work and quiet-mode
+// daydreams should hold off. Failures are logged but never block hook flow.
+func writeSessionHeartbeat(vaultRoot, sessionID, cwd string, ts time.Time) error {
+	dir := filepath.Join(vaultRoot, "Metrics")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return fmt.Errorf("mkdir Metrics: %w", err)
+	}
+	path := filepath.Join(dir, "session_heartbeat.jsonl")
+
+	// Rotate before append if threshold reached. Failures here are
+	// non-fatal — losing a single heartbeat is acceptable; failing to
+	// write is what we actually care about.
+	if cfg := LoadConfig(vaultRoot); cfg.AutoDaydreamLogRotationThreshold > 0 {
+		if err := rotateJSONLIfNeeded(path, cfg.AutoDaydreamLogRotationThreshold, ts); err != nil {
+			fmt.Fprintf(os.Stderr, "[jm hook] heartbeat rotation: %v\n", err)
+		}
+	}
+
+	rec := struct {
+		Timestamp string `json:"timestamp"`
+		SessionID string `json:"session_id"`
+		Cwd       string `json:"cwd"`
+	}{
+		Timestamp: ts.Format(time.RFC3339),
+		SessionID: sessionID,
+		Cwd:       cwd,
+	}
+	line, err := json.Marshal(rec)
+	if err != nil {
+		return fmt.Errorf("marshal heartbeat: %w", err)
+	}
+
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	if err != nil {
+		return fmt.Errorf("open heartbeat file: %w", err)
+	}
+	defer f.Close()
+	if _, err := f.Write(append(line, '\n')); err != nil {
+		return fmt.Errorf("write heartbeat: %w", err)
+	}
+	return nil
+}
+
 // runSessionStart produces the fixed-blend session orientation:
 // system state + profile traits + recent episodic + recently-accessed projects.
 //
 // Archived memories are excluded. Knowledge entries are NOT loaded at session
 // start — they surface topically via user-prompt-submit association.
-func runSessionStart(vaultRoot string, _ *hookInput) {
+func runSessionStart(vaultRoot string, input *hookInput) {
+	if err := writeSessionHeartbeat(vaultRoot, input.SessionID, input.Cwd, time.Now()); err != nil {
+		fmt.Fprintf(os.Stderr, "[jm hook] session-start: heartbeat: %v\n", err)
+	}
+
 	memories, err := LoadAllMemories(vaultRoot)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "[jm hook] session-start: load memories: %v\n", err)
@@ -171,6 +221,10 @@ func runSessionStart(vaultRoot string, _ *hookInput) {
 // spawn agents directly (only Claude's main loop can), but it can put
 // the reminder in front of Claude at the start of every substantive turn.
 func runUserPromptSubmit(vaultRoot string, input *hookInput) {
+	if err := writeSessionHeartbeat(vaultRoot, input.SessionID, input.Cwd, time.Now()); err != nil {
+		fmt.Fprintf(os.Stderr, "[jm hook] user-prompt-submit: heartbeat: %v\n", err)
+	}
+
 	prompt := strings.TrimSpace(input.Prompt)
 	if prompt == "" {
 		return
@@ -195,13 +249,39 @@ func runUserPromptSubmit(vaultRoot string, input *hookInput) {
 		if isDensePrompt(prompt, 0) {
 			writeDaydreamNudge(os.Stdout, len(prompt), 0)
 		}
+		// Hook surfacing still gets a chance — fresh daydreams may have
+		// no LTM overlap but still match the prompt by tag/body.
+		surfaceFreshDaydreamsToHook(vaultRoot, prompt, input.SessionID, time.Now())
 		return
 	}
 
 	writePromptAssociationContext(os.Stdout, results)
 
+	surfaceFreshDaydreamsToHook(vaultRoot, prompt, input.SessionID, time.Now())
+
 	if isDensePrompt(prompt, len(results)) {
 		writeDaydreamNudge(os.Stdout, len(prompt), len(results))
+	}
+}
+
+// surfaceFreshDaydreamsToHook is the hook-level wrapper around
+// SurfaceFreshDaydreams. Loads config, surfaces matching entries, marks
+// them as surfaced for THIS session. Failures are logged but never block
+// the hook.
+func surfaceFreshDaydreamsToHook(vaultRoot, prompt, sessionID string, now time.Time) {
+	cfg := LoadConfig(vaultRoot)
+	if !cfg.AutoDaydreamSurfaceToSession {
+		return
+	}
+	surfaced := SurfaceFreshDaydreams(vaultRoot, prompt, sessionID, cfg, now)
+	if len(surfaced) == 0 {
+		return
+	}
+	writeFreshDaydreamFindings(os.Stdout, surfaced)
+	for _, s := range surfaced {
+		if err := MarkDaydreamSurfaced(s.Entry, sessionID); err != nil {
+			fmt.Fprintf(os.Stderr, "[jm hook] mark surfaced: %v\n", err)
+		}
 	}
 }
 

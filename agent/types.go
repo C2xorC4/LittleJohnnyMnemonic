@@ -45,6 +45,16 @@ type BufferEntry struct {
 	HoldCount        int              `yaml:"hold_count,omitempty"`
 	HeldForCrossSession bool          `yaml:"held_for_cross_session,omitempty"` // rate-separation gate
 
+	// Daydream-routing fields. Populated by autodream agent breadcrumbs.
+	// daydream_kind values: exploration | replay-refine | replay-contradict
+	// (replay-reinforce and unrelated never produce a buffer entry).
+	// priority values: high | critical (omitted = normal).
+	DaydreamKind        string   `yaml:"daydream_kind,omitempty"`
+	DaydreamMode        string   `yaml:"daydream_mode,omitempty"`
+	Priority            string   `yaml:"priority,omitempty"`
+	Relationship        string   `yaml:"relationship,omitempty"`         // replay-only: reinforce|refine|contradict|unrelated
+	SurfacedInSessions  []string `yaml:"surfaced_in_sessions,omitempty"` // session IDs where this entry was surfaced — within-session dedup
+
 	// Derived
 	Body     string `yaml:"-"`
 	FilePath string `yaml:"-"`
@@ -161,6 +171,39 @@ type Config struct {
 	DaydreamJudgeCandidates            int     `yaml:"daydream_judge_candidates"`             // top N related memories to include as context
 	DaydreamRedundancyFallbackDampening float64 `yaml:"daydream_redundancy_fallback_dampening"` // multiplier when API unavailable
 
+	// Auto-daydream — autonomous background daydreams, jitter-scheduled, opt-in.
+	// See Config.md "## Auto Daydream" for the full spec. Two modes (active/quiet)
+	// with mode-aware seed weighting; quiet mode mixes exploration and CLS-style
+	// interleaved replay sub-strategies. Activity-based skip detection replaces
+	// the lockfile approach (see auto_daydream_activity_sources).
+	AutoDaydreamEnabled                      bool               `yaml:"auto_daydream_enabled"`
+	AutoDaydreamIntervalMinMinutes           int                `yaml:"auto_daydream_interval_min_minutes"`
+	AutoDaydreamIntervalMaxMinutes           int                `yaml:"auto_daydream_interval_max_minutes"`
+	AutoDaydreamMaxPerDayActive              int                `yaml:"auto_daydream_max_per_day_active"`
+	AutoDaydreamMaxPerDayQuiet               int                `yaml:"auto_daydream_max_per_day_quiet"`
+	AutoDaydreamQuietHours                   string             `yaml:"auto_daydream_quiet_hours"`
+	AutoDaydreamQuietHoursTimezone           string             `yaml:"auto_daydream_quiet_hours_timezone"`
+	AutoDaydreamActiveSkipWindowMinutes      int                `yaml:"auto_daydream_active_skip_window_minutes"`
+	AutoDaydreamQuietSkipWindowMinutes       int                `yaml:"auto_daydream_quiet_skip_window_minutes"`
+	AutoDaydreamActivitySources              []string           `yaml:"auto_daydream_activity_sources"`
+	AutoDaydreamActiveSeedSources            map[string]float64 `yaml:"auto_daydream_active_seed_sources"`
+	AutoDaydreamQuietExplorationSeedSources  map[string]float64 `yaml:"auto_daydream_quiet_exploration_seed_sources"`
+	AutoDaydreamStrategyExplorationBase      float64            `yaml:"auto_daydream_strategy_exploration_base"`
+	AutoDaydreamStrategyReplayBase           float64            `yaml:"auto_daydream_strategy_replay_base"`
+	AutoDaydreamStrategyAdaptive             bool               `yaml:"auto_daydream_strategy_adaptive"`
+	AutoDaydreamStrategyBufferPressureFactor float64            `yaml:"auto_daydream_strategy_buffer_pressure_factor"`
+	AutoDaydreamReplayRecentSource           string             `yaml:"auto_daydream_replay_recent_source"`
+	AutoDaydreamReplayRecentMaxAgeDays       int                `yaml:"auto_daydream_replay_recent_max_age_days"`
+	AutoDaydreamReplayStableFilter           string             `yaml:"auto_daydream_replay_stable_filter"`
+	AutoDaydreamReplayStableCategories       []string           `yaml:"auto_daydream_replay_stable_categories"`
+	AutoDaydreamOverrideMode                 string             `yaml:"auto_daydream_override_mode"`
+	AutoDaydreamSurfaceToSession             bool               `yaml:"auto_daydream_surface_to_session"`
+	AutoDaydreamSurfaceMaxAgeHours           int                `yaml:"auto_daydream_surface_max_age_hours"`
+	AutoDaydreamSurfaceRelevanceThreshold    float64            `yaml:"auto_daydream_surface_relevance_threshold"`
+	AutoDaydreamSurfaceMaxPerPrompt          int                `yaml:"auto_daydream_surface_max_per_prompt"`
+	AutoDaydreamLogRotationThreshold         int                `yaml:"auto_daydream_log_rotation_threshold"`
+	AutoDaydreamValueJudgeEnabled            bool               `yaml:"auto_daydream_value_judge_enabled"`
+
 	// Associative retrieval
 	SpreadingActivationFactor float64            `yaml:"spreading_activation_factor"`
 	MaxActivationHops         int                `yaml:"max_activation_hops"`
@@ -254,6 +297,48 @@ func DefaultConfig() Config {
 		DaydreamJudgeThreshold:              0.4,
 		DaydreamJudgeCandidates:             3,
 		DaydreamRedundancyFallbackDampening: 0.3,
+
+		AutoDaydreamEnabled:                      false,
+		AutoDaydreamIntervalMinMinutes:           60,
+		AutoDaydreamIntervalMaxMinutes:           180,
+		AutoDaydreamMaxPerDayActive:              12,
+		AutoDaydreamMaxPerDayQuiet:               6,
+		AutoDaydreamQuietHours:                   "",
+		AutoDaydreamQuietHoursTimezone:           "local",
+		AutoDaydreamActiveSkipWindowMinutes:      0,
+		AutoDaydreamQuietSkipWindowMinutes:       60,
+		AutoDaydreamActivitySources:              []string{"buffer", "heartbeat"},
+		AutoDaydreamActiveSeedSources: map[string]float64{
+			"buffer":    30,
+			"project":   20,
+			"knowledge": 20,
+			"semantic":  15,
+			"episodic":  10,
+			"reference": 5,
+		},
+		AutoDaydreamQuietExplorationSeedSources: map[string]float64{
+			"knowledge": 25,
+			"semantic":  25,
+			"episodic":  20,
+			"project":   15,
+			"reference": 10,
+			"buffer":    5,
+		},
+		AutoDaydreamStrategyExplorationBase:      0.5,
+		AutoDaydreamStrategyReplayBase:           0.5,
+		AutoDaydreamStrategyAdaptive:             false,
+		AutoDaydreamStrategyBufferPressureFactor: 1.5,
+		AutoDaydreamReplayRecentSource:           "buffer",
+		AutoDaydreamReplayRecentMaxAgeDays:       14,
+		AutoDaydreamReplayStableFilter:           "crystallized",
+		AutoDaydreamReplayStableCategories:       []string{"semantic", "user", "feedback"},
+		AutoDaydreamOverrideMode:                 "",
+		AutoDaydreamSurfaceToSession:             true,
+		AutoDaydreamSurfaceMaxAgeHours:           12,
+		AutoDaydreamSurfaceRelevanceThreshold:    0.4,
+		AutoDaydreamSurfaceMaxPerPrompt:          4,
+		AutoDaydreamLogRotationThreshold:         1000,
+		AutoDaydreamValueJudgeEnabled:            true,
 
 		SpreadingActivationFactor: 0.3,
 		MaxActivationHops:         1,
@@ -350,6 +435,11 @@ type BufferAssessment struct {
 	// Daydream redundancy judgment (only populated when the daydream judge fires)
 	DaydreamVerdict       string // "novel" | "redundant" | "partial" | "" (not evaluated) | "fallback" (API failure)
 	DaydreamVerdictReason string
+
+	// Daydream value judgment — gates retention by insight density. Only
+	// populated for daydream-sourced entries when AutoDaydreamValueJudgeEnabled.
+	DaydreamValueVerdict ValueVerdict // "valuable" | "marginal" | "low-value" | ""
+	DaydreamValueReason  string
 }
 
 // ConsolidationReport summarizes a consolidation run.

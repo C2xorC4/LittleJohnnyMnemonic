@@ -24,6 +24,10 @@ agent/jm
 agent/jm.exe
 agent/jm.test
 agent/jm.test.exe
+agent/johnnymnemonic
+agent/johnnymnemonic.exe
+agent/johnnymnemonic.test
+agent/johnnymnemonic.test.exe
 agent/coverage.out
 agent/*.prof
 

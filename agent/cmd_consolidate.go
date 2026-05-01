@@ -138,6 +138,24 @@ func cmdConsolidate(vaultRoot string, args []string) {
 		}
 	}
 
+	// ─── Phase 2.5: Replay Reinforcements ───
+	// Apply confidence deltas queued by replay-reinforce verdicts. These come
+	// from autodream's replay strategy: when the agent confirmed that a recent
+	// observation strengthens an existing crystallized trait, the orchestrator
+	// queued a confidence delta in Metrics/replay_reinforcements.jsonl. Apply
+	// them now so the LTM decay pass below sees the updated confidence.
+	if !*dryRun {
+		applied, skipped, rerr := ProcessReplayReinforcements(vaultRoot, now)
+		if applied > 0 || skipped > 0 || rerr != nil {
+			fmt.Println("Phase 2.5: Replay Reinforcements")
+			fmt.Println(strings.Repeat("─", 60))
+			if rerr != nil {
+				fmt.Fprintf(os.Stderr, "  [!] %v\n", rerr)
+			}
+			fmt.Printf("  Applied %d, skipped %d (target memory missing or moved)\n\n", applied, skipped)
+		}
+	}
+
 	// ─── Phase 3: LTM Decay Pass (standard + deep only) ───
 	//
 	// Under the progressive-compression model (phases 1-5 of the decay
@@ -304,6 +322,11 @@ func cmdConsolidate(vaultRoot string, args []string) {
 		} else {
 			fmt.Println("  Consolidation log appended to Metrics/consolidation_log.md")
 		}
+		// Daydream consolidation outcome trace (instrumentation Hook 6) —
+		// per-daydream-entry record for downstream tuning analysis.
+		if err := WriteConsolidationOutcomes(vaultRoot, report.BufferAssessments, now); err != nil {
+			fmt.Fprintf(os.Stderr, "[!] Failed to write consolidation outcomes: %v\n", err)
+		}
 	} else {
 		fmt.Println("  [DRY RUN] No log written.")
 	}
@@ -368,6 +391,19 @@ func assessBufferEntry(entry *BufferEntry, memories []*MemoryEntry, cfg Config, 
 		return assessment
 	}
 
+	// Daydream replay-contradict: critical-priority queue, immune to standard
+	// drop. The agent flagged a conflict between a recent observation and a
+	// crystallized stable trait — the user must adjudicate. Promoting it
+	// ensures the conflict surfaces in LTM rather than getting filtered out.
+	// The replay_contradictions.jsonl audit file (written by the orchestrator)
+	// keeps a parallel queue for `jm daydream review`.
+	if entry.DaydreamKind == "replay-contradict" || strings.EqualFold(entry.Priority, "critical") {
+		assessment.Action = ActionPromote
+		assessment.RetentionScore = 1.0
+		assessment.Reason = "replay-contradict: critical-priority queue, immune to standard drop"
+		return assessment
+	}
+
 	// Step 2: Redundancy check against existing LTM
 	assessment.Redundancy = computeRedundancy(entry, memories)
 
@@ -408,6 +444,26 @@ func assessBufferEntry(entry *BufferEntry, memories []*MemoryEntry, cfg Config, 
 		}
 	}
 
+	// Daydream value judge: for daydream-sourced exploration and replay-refine
+	// entries, score the finding's insight density. This replaces user-engagement
+	// as the consolidation gate (see the 2026-04-30 buffer entry on engagement
+	// signals during task focus). Fires AFTER redundancy judge so we don't pay
+	// twice for an entry we'd discard anyway.
+	if cfg.AutoDaydreamValueJudgeEnabled && IsDaydreamSourced(entry) && isExplorationOrRefine(entry) {
+		valueVerdict, valueReason, vErr := daydreamValueJudgeFn(entry)
+		if vErr == nil {
+			assessment.DaydreamValueVerdict = valueVerdict
+			assessment.DaydreamValueReason = valueReason
+			if valueVerdict == ValueLowValue {
+				assessment.Action = ActionDiscard
+				assessment.Reason = "daydream-value low: " + valueReason
+				return assessment
+			}
+		}
+		// On error or marginal/valuable: continue to scoring. "valuable" gets
+		// a retention floor below; "marginal" passes through with no change.
+	}
+
 	// Step 3: Recency factor
 	hoursSinceEntry := now.Sub(entry.Timestamp).Hours()
 	assessment.RecencyFactor = math.Max(0.1, 1.0-hoursSinceEntry/(24*7)) // decays over a week
@@ -417,6 +473,21 @@ func assessBufferEntry(entry *BufferEntry, memories []*MemoryEntry, cfg Config, 
 		(1 - assessment.Redundancy) *
 		assessment.RecencyFactor *
 		assessment.ContextPenalty
+
+	// Replay-refine bonus: refine entries are confirmed integration findings,
+	// worth keeping above the marginal threshold. +0.3 nudges them clear of
+	// the discard band without forcing promotion.
+	if entry.DaydreamKind == "replay-refine" {
+		assessment.RetentionScore += 0.3
+	}
+
+	// Value-judge floor: "valuable" verdict means the agent surfaced something
+	// concrete; don't let a low-tag-overlap entry get scored out by the proxy.
+	// 0.6 lands above the promote threshold (0.5) so valuable findings reliably
+	// promote even when surprise was set conservatively.
+	if assessment.DaydreamValueVerdict == ValueValuable && assessment.RetentionScore < 0.6 {
+		assessment.RetentionScore = 0.6
+	}
 
 	// Step 5: Classify
 	if assessment.RetentionScore > 0.5 {
@@ -431,6 +502,26 @@ func assessBufferEntry(entry *BufferEntry, memories []*MemoryEntry, cfg Config, 
 	}
 
 	return assessment
+}
+
+// daydreamValueJudgeFn is the function used to score daydream entries during
+// consolidation. Production code uses JudgeDaydreamValue (real Haiku call).
+// Tests override this variable to inject deterministic verdicts without
+// hitting the API.
+var daydreamValueJudgeFn = JudgeDaydreamValue
+
+// isExplorationOrRefine returns true for daydream entries the value judge
+// should fire on. Replay-contradict bypasses the judge (handled earlier);
+// reinforce never produces a buffer entry. Empty daydream_kind defaults to
+// exploration since the existing memory-daydream agent doesn't yet emit the
+// field.
+func isExplorationOrRefine(entry *BufferEntry) bool {
+	switch entry.DaydreamKind {
+	case "exploration", "replay-refine", "":
+		return true
+	default:
+		return false
+	}
 }
 
 // isAmbiguous checks if a buffer entry fails the self-containment test.
@@ -575,6 +666,17 @@ func generatePromotionPrompt(entry *BufferEntry, memories []*MemoryEntry, sessio
 	return b.String()
 }
 
+// truncateForLog trims the value-judge reason to keep the consolidation log
+// readable. Named differently from truncateResponse (which lives in
+// cmd_autodream.go and serves a different concern — JSONL line bloat
+// control vs Markdown line readability).
+func truncateForLog(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen] + "…"
+}
+
 // archiveMemory moves a memory from Memory/ to Archive/.
 func archiveMemory(vaultRoot string, m *MemoryEntry, reason string, finalScore float64, now time.Time) {
 	m.Archived = &now
@@ -632,7 +734,20 @@ func writeConsolidationLog(vaultRoot string, report *ConsolidationReport) error 
 	if len(report.BufferAssessments) > 0 {
 		fmt.Fprintln(f, "\n### Actions")
 		for _, a := range report.BufferAssessments {
-			fmt.Fprintf(f, "- **%s** `%s` — %s\n", a.Action, a.Entry.FileName, a.Reason)
+			fmt.Fprintf(f, "- **%s** `%s` — %s", a.Action, a.Entry.FileName, a.Reason)
+			// Hook 5: surface daydream value-judge verdict in the consolidation
+			// log alongside the action+reason so post-hoc review of why daydream
+			// entries promoted/discarded preserves the judge's input.
+			if a.DaydreamValueVerdict != "" {
+				fmt.Fprintf(f, " [value=%s]", a.DaydreamValueVerdict)
+				if a.DaydreamValueReason != "" {
+					fmt.Fprintf(f, " %s", truncateForLog(a.DaydreamValueReason, 80))
+				}
+			}
+			if a.DaydreamVerdict != "" && a.DaydreamVerdict != "fallback" {
+				fmt.Fprintf(f, " [redundancy=%s]", a.DaydreamVerdict)
+			}
+			fmt.Fprintln(f)
 		}
 	}
 

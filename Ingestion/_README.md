@@ -181,8 +181,11 @@ Current assignments:
 | Prefix | Book |
 |---|---|
 | `acw` | The Art of Cyberwarfare (DiMaggio, 2022) |
+| `ee` | Evasion Engineering (Chow & LaSalvia, 2026) |
+| `eedr` | Evading EDR (Hand, 2024) |
 | `ootm` | Out of the Mountains (Kilcullen, 2013) |
 | `gt` | Game Theory, 3rd ed. (Bonanno, 2024) |
+| `rtai` | Red Teaming AI / EA (Dursey, 2026) |
 
 New entries go to `Memory/Knowledge/<prefix>_<topic>.md` where
 `<topic>` is a descriptive snake_case identifier (not the chapter

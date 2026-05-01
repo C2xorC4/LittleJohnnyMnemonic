@@ -314,6 +314,105 @@ archive_instead_of_delete: true # false = permanently delete decayed memories
 advice_policy: contextual        # contextual | never | always
 ```
 
+## Auto Daydream
+
+Autonomous background daydreams, jitter-scheduled, opt-in. Two modes:
+
+- **Active mode** — fires during configured working hours (or always, if no quiet hours configured). Workflow-adjacent: seeds bias toward Buffer + recently-accessed material; explores connections between current work and stored knowledge.
+- **Quiet mode** — fires during configured quiet hours. Two sub-strategies, mixed probabilistically: **exploration** (single uniform seed, dream-like random walk) and **interleaved replay** (paired recent + crystallized seed, modeled on CLS hippocampal replay during sleep). Replay falls back to exploration when no recent material exists for pairing.
+
+Activity-based skip detection (replaces lockfile design): each mode skips its run if real activity (non-daydream Buffer writes or UserPromptSubmit hook firings) occurred within its configured skip window. Active mode defaults to never-skip (its purpose is firing during sessions); quiet mode defaults to a 60-minute skip window.
+
+```yaml
+# Master toggle. Opt-in to avoid surprise API spend.
+auto_daydream_enabled: true
+
+# Jitter — auto-daydream rolls a target interval in [min, max] minutes.
+auto_daydream_interval_min_minutes: 60
+auto_daydream_interval_max_minutes: 180
+
+# Daily caps split per mode.
+auto_daydream_max_per_day_active: 12
+auto_daydream_max_per_day_quiet: 6
+
+# Quiet hours. Empty = quiet mode disabled (always active mode).
+# Format: "HH:MM-HH:MM"; wraparound supported (e.g., "23:00-06:00").
+auto_daydream_quiet_hours: ""
+auto_daydream_quiet_hours_timezone: local         # local | utc
+
+# Activity-based skip windows. If activity within window, skip.
+# Active=0 means active mode never skips on activity.
+auto_daydream_active_skip_window_minutes: 0
+auto_daydream_quiet_skip_window_minutes: 60
+auto_daydream_activity_sources: "buffer,heartbeat"  # comma-separated; either or both
+
+# Active mode seed weighting (workflow-adjacent — biases toward recent material).
+auto_daydream_active_seed_sources:
+  buffer: 30
+  project: 20
+  knowledge: 20
+  semantic: 15
+  episodic: 10
+  reference: 5
+
+# Quiet exploration sub-strategy seed weighting (dream-like — uniform sampling).
+auto_daydream_quiet_exploration_seed_sources:
+  knowledge: 25
+  semantic: 25
+  episodic: 20
+  project: 15
+  reference: 10
+  buffer: 5
+
+# Strategy mix for quiet mode (exploration vs replay).
+# Conditional fallback: replay → exploration when no recent material available.
+auto_daydream_strategy_exploration_base: 0.5
+auto_daydream_strategy_replay_base: 0.5
+
+# Adaptive replay weighting — parameter wired in, math is TODO until post-initial-testing.
+auto_daydream_strategy_adaptive: false
+auto_daydream_strategy_buffer_pressure_factor: 1.5
+
+# Replay sub-strategy: pair a recent trace with a stable crystallized trace.
+auto_daydream_replay_recent_source: buffer        # buffer | recently_accessed_ltm
+auto_daydream_replay_recent_max_age_days: 14
+auto_daydream_replay_stable_filter: crystallized  # rate-separation tier filter
+auto_daydream_replay_stable_categories: "semantic,user,feedback"
+
+# Override mode for testing / development. Empty = normal scheduling.
+# Values: "" | active | quiet | replay-only | exploration-only
+auto_daydream_override_mode: ""
+
+# Hook surfacing — passes fresh daydream findings into the UserPromptSubmit
+# context block alongside LTM retrieval. Default ON: design/develop kickoff
+# prompts benefit from seeing unprocessed cross-domain findings from prior
+# sessions or idle time.
+#
+# Within-session deduplication is per-session (tracked in each entry's
+# `surfaced_in_sessions` field), not time-based. This prevents repetition
+# fatigue during sustained single-topic work while keeping findings
+# eligible to re-surface in different sessions/contexts.
+auto_daydream_surface_to_session: true
+auto_daydream_surface_max_age_hours: 12
+auto_daydream_surface_relevance_threshold: 0.4
+auto_daydream_surface_max_per_prompt: 4
+
+# Log rotation. Append-time check; rotates to Metrics/Archive/<basename>.{timestamp}.jsonl.
+auto_daydream_log_rotation_threshold: 1000
+
+# Value judge — gates daydream entries through consolidation by insight density,
+# replacing user-engagement as the retention signal. Default on.
+auto_daydream_value_judge_enabled: true
+```
+
+**Override mode** is for testing — combine with `jm autodream --force` to bypass jitter and daily caps. `jm autodream --dry-run` builds the seed and prompt without invoking the model.
+
+**Triage architecture** (separate from this config but related): daydream findings are not gated on real-time user engagement during active sessions. Routing is layered:
+- `replay-reinforce` verdicts → automatic confidence delta on the stable memory
+- `replay-refine` and `exploration` findings → daydream value judge during consolidation
+- `replay-contradict` findings → critical-priority queue, immune to standard drop
+- Opt-in batch review via `jm daydream review` for explicit user triage
+
 ## Backup
 
 Encrypted vault backup. Cloud-password-manager model: local age encryption
@@ -323,7 +422,7 @@ blobs are the only thing that ever sees a remote.
 See [[System/Backup]] for the operational guide and key escrow protocol.
 
 ```yaml
-backup_enabled: false                                      # opt-in. set true after init-key + first round-trip verified.
+backup_enabled: true                                      # opt-in. set true after init-key + first round-trip verified.
 backup_age_recipient: "age1jpelta6nwk8nphrct9d9h4y66sda8eez83kwsg2jxym9km7xppaqa3ftax"                                   # public key (age1...). Set by `jm backup --init-key`.
 backup_age_identity_path: ""                               # private key file. Empty = ~/.config/ljm/age.key.
 backup_local_target_dir: "D:\Repos\LLM\LittleJohnnyMnemonic-LocalSync"                                # durability floor — always written first. Empty = sibling of vault root.

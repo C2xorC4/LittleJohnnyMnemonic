@@ -52,6 +52,12 @@ func LoadConfig(vaultRoot string) Config {
 	if vals, ok := overrides["profile_decay_rates"]; ok && len(vals) > 0 {
 		cfg.ProfileDecayRates = vals
 	}
+	if vals, ok := overrides["auto_daydream_active_seed_sources"]; ok && len(vals) > 0 {
+		cfg.AutoDaydreamActiveSeedSources = vals
+	}
+	if vals, ok := overrides["auto_daydream_quiet_exploration_seed_sources"]; ok && len(vals) > 0 {
+		cfg.AutoDaydreamQuietExplorationSeedSources = vals
+	}
 
 	scalars := parseConfigScalars(combined)
 	applyScalarOverrides(&cfg, scalars)
@@ -182,6 +188,86 @@ func applyScalarOverrides(cfg *Config, s map[string]string) {
 		cfg.DaydreamRedundancyFallbackDampening = atofOrKeep(v, cfg.DaydreamRedundancyFallbackDampening)
 	}
 
+	if v, ok := s["auto_daydream_enabled"]; ok {
+		cfg.AutoDaydreamEnabled = atobOrKeep(v, cfg.AutoDaydreamEnabled)
+	}
+	if v, ok := s["auto_daydream_interval_min_minutes"]; ok {
+		cfg.AutoDaydreamIntervalMinMinutes = atoiOrKeep(v, cfg.AutoDaydreamIntervalMinMinutes)
+	}
+	if v, ok := s["auto_daydream_interval_max_minutes"]; ok {
+		cfg.AutoDaydreamIntervalMaxMinutes = atoiOrKeep(v, cfg.AutoDaydreamIntervalMaxMinutes)
+	}
+	if v, ok := s["auto_daydream_max_per_day_active"]; ok {
+		cfg.AutoDaydreamMaxPerDayActive = atoiOrKeep(v, cfg.AutoDaydreamMaxPerDayActive)
+	}
+	if v, ok := s["auto_daydream_max_per_day_quiet"]; ok {
+		cfg.AutoDaydreamMaxPerDayQuiet = atoiOrKeep(v, cfg.AutoDaydreamMaxPerDayQuiet)
+	}
+	if v, ok := s["auto_daydream_quiet_hours"]; ok {
+		cfg.AutoDaydreamQuietHours = stripQuotes(v)
+	}
+	if v, ok := s["auto_daydream_quiet_hours_timezone"]; ok {
+		cfg.AutoDaydreamQuietHoursTimezone = stripQuotes(v)
+	}
+	if v, ok := s["auto_daydream_active_skip_window_minutes"]; ok {
+		cfg.AutoDaydreamActiveSkipWindowMinutes = atoiOrKeep(v, cfg.AutoDaydreamActiveSkipWindowMinutes)
+	}
+	if v, ok := s["auto_daydream_quiet_skip_window_minutes"]; ok {
+		cfg.AutoDaydreamQuietSkipWindowMinutes = atoiOrKeep(v, cfg.AutoDaydreamQuietSkipWindowMinutes)
+	}
+	if v, ok := s["auto_daydream_activity_sources"]; ok {
+		if list := parseCSVList(v); len(list) > 0 {
+			cfg.AutoDaydreamActivitySources = list
+		}
+	}
+	if v, ok := s["auto_daydream_strategy_exploration_base"]; ok {
+		cfg.AutoDaydreamStrategyExplorationBase = atofOrKeep(v, cfg.AutoDaydreamStrategyExplorationBase)
+	}
+	if v, ok := s["auto_daydream_strategy_replay_base"]; ok {
+		cfg.AutoDaydreamStrategyReplayBase = atofOrKeep(v, cfg.AutoDaydreamStrategyReplayBase)
+	}
+	if v, ok := s["auto_daydream_strategy_adaptive"]; ok {
+		cfg.AutoDaydreamStrategyAdaptive = atobOrKeep(v, cfg.AutoDaydreamStrategyAdaptive)
+	}
+	if v, ok := s["auto_daydream_strategy_buffer_pressure_factor"]; ok {
+		cfg.AutoDaydreamStrategyBufferPressureFactor = atofOrKeep(v, cfg.AutoDaydreamStrategyBufferPressureFactor)
+	}
+	if v, ok := s["auto_daydream_replay_recent_source"]; ok {
+		cfg.AutoDaydreamReplayRecentSource = stripQuotes(v)
+	}
+	if v, ok := s["auto_daydream_replay_recent_max_age_days"]; ok {
+		cfg.AutoDaydreamReplayRecentMaxAgeDays = atoiOrKeep(v, cfg.AutoDaydreamReplayRecentMaxAgeDays)
+	}
+	if v, ok := s["auto_daydream_replay_stable_filter"]; ok {
+		cfg.AutoDaydreamReplayStableFilter = stripQuotes(v)
+	}
+	if v, ok := s["auto_daydream_replay_stable_categories"]; ok {
+		if list := parseCSVList(v); len(list) > 0 {
+			cfg.AutoDaydreamReplayStableCategories = list
+		}
+	}
+	if v, ok := s["auto_daydream_override_mode"]; ok {
+		cfg.AutoDaydreamOverrideMode = stripQuotes(v)
+	}
+	if v, ok := s["auto_daydream_surface_to_session"]; ok {
+		cfg.AutoDaydreamSurfaceToSession = atobOrKeep(v, cfg.AutoDaydreamSurfaceToSession)
+	}
+	if v, ok := s["auto_daydream_surface_max_age_hours"]; ok {
+		cfg.AutoDaydreamSurfaceMaxAgeHours = atoiOrKeep(v, cfg.AutoDaydreamSurfaceMaxAgeHours)
+	}
+	if v, ok := s["auto_daydream_surface_relevance_threshold"]; ok {
+		cfg.AutoDaydreamSurfaceRelevanceThreshold = atofOrKeep(v, cfg.AutoDaydreamSurfaceRelevanceThreshold)
+	}
+	if v, ok := s["auto_daydream_surface_max_per_prompt"]; ok {
+		cfg.AutoDaydreamSurfaceMaxPerPrompt = atoiOrKeep(v, cfg.AutoDaydreamSurfaceMaxPerPrompt)
+	}
+	if v, ok := s["auto_daydream_log_rotation_threshold"]; ok {
+		cfg.AutoDaydreamLogRotationThreshold = atoiOrKeep(v, cfg.AutoDaydreamLogRotationThreshold)
+	}
+	if v, ok := s["auto_daydream_value_judge_enabled"]; ok {
+		cfg.AutoDaydreamValueJudgeEnabled = atobOrKeep(v, cfg.AutoDaydreamValueJudgeEnabled)
+	}
+
 	if v, ok := s["spreading_activation_factor"]; ok {
 		cfg.SpreadingActivationFactor = atofOrKeep(v, cfg.SpreadingActivationFactor)
 	}
@@ -264,6 +350,25 @@ func stripQuotes(s string) string {
 		return s[1 : len(s)-1]
 	}
 	return s
+}
+
+// parseCSVList accepts a (possibly quoted) comma-separated string and returns
+// the list of trimmed, non-empty entries. Used for config keys that hold
+// short ordered lists (activity sources, replay stable categories).
+func parseCSVList(s string) []string {
+	s = stripQuotes(s)
+	if s == "" {
+		return nil
+	}
+	parts := strings.Split(s, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 var yamlBlockRe = regexp.MustCompile("(?s)```yaml\\s*\\n(.*?)\\n```")
