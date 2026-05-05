@@ -47,6 +47,113 @@ func TestParseBufferEntry_Roundtrip(t *testing.T) {
 	}
 }
 
+func TestParseBufferEntry_NormalizesWrongType(t *testing.T) {
+	// A buffer file with type=semantic (the daydream-agent compliance
+	// failure pattern) must parse as TypeBuffer regardless. The parser
+	// auto-corrects in memory and warns to stderr.
+	dir := t.TempDir()
+	path := filepath.Join(dir, "malformed.md")
+
+	malformed := `---
+type: semantic
+timestamp: 2026-05-04T19:30:00-04:00
+source: daydream
+surprise: 0.6
+context_integrity: full
+tags: [test]
+related: []
+---
+
+Body content.
+`
+	if err := os.WriteFile(path, []byte(malformed), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	entry, err := ParseBufferEntry(path)
+	if err != nil {
+		t.Fatalf("ParseBufferEntry: %v", err)
+	}
+	if entry.Type != TypeBuffer {
+		t.Errorf("Type = %q, want %q (parser must auto-correct wrong types)", entry.Type, TypeBuffer)
+	}
+}
+
+func TestParseBufferEntry_GoZeroValuePatternStillNormalizes(t *testing.T) {
+	// The full malformed-signature pattern from the 2026-05-04 audit:
+	// type:semantic + Go zero-time + empty source + surprise:0.0.
+	// Parser must still normalize Type even if other fields are bad.
+	dir := t.TempDir()
+	path := filepath.Join(dir, "full-malformed.md")
+
+	malformed := `---
+type: semantic
+timestamp: 0001-01-01T00:00:00Z
+source:
+surprise: 0.0
+context_integrity: full
+tags: []
+related: []
+---
+
+Body.
+`
+	if err := os.WriteFile(path, []byte(malformed), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	entry, err := ParseBufferEntry(path)
+	if err != nil {
+		t.Fatalf("ParseBufferEntry: %v", err)
+	}
+	if entry.Type != TypeBuffer {
+		t.Errorf("Type = %q, want %q", entry.Type, TypeBuffer)
+	}
+	// Other fields parse to their zero values; that's expected — only
+	// the type is auto-corrected. Source repair is outside parser scope.
+	if entry.Source != "" {
+		t.Errorf("Source = %q; expected empty (parser does not invent missing values)", entry.Source)
+	}
+}
+
+func TestWriteBufferEntry_ForcesBufferType(t *testing.T) {
+	// Defensive write: even if a caller hands WriteBufferEntry a struct
+	// with a wrong Type, the persisted file must say type:buffer.
+	dir := t.TempDir()
+	path := filepath.Join(dir, "force.md")
+
+	entry := &BufferEntry{
+		Type:             TypeSemantic, // wrong on purpose
+		Timestamp:        time.Now(),
+		Source:           "daydream",
+		Surprise:         0.5,
+		ContextIntegrity: ContextFull,
+		Tags:             []string{"x"},
+		Body:             "body",
+		FilePath:         path,
+	}
+
+	if err := WriteBufferEntry(entry); err != nil {
+		t.Fatalf("WriteBufferEntry: %v", err)
+	}
+	// Verify in-memory struct was corrected (the writer mutates the input
+	// to keep parser-vs-writer agreement).
+	if entry.Type != TypeBuffer {
+		t.Errorf("entry.Type after write = %q, want %q (writer must force)", entry.Type, TypeBuffer)
+	}
+	// Verify on-disk content.
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), "type: buffer\n") {
+		t.Errorf("file does not contain 'type: buffer'; got:\n%s", data)
+	}
+	if strings.Contains(string(data), "type: semantic") {
+		t.Errorf("file contains forbidden 'type: semantic'; got:\n%s", data)
+	}
+}
+
 func TestParseMemoryEntry_Roundtrip(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "test_memory.md")

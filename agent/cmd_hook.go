@@ -77,12 +77,30 @@ func readHookInput() (*hookInput, error) {
 	return &input, nil
 }
 
+// autodreamInvocationEnvVar is the marker env var that autodream's
+// claude -p invocation sets. Heartbeat writes from sessions spawned by
+// autodream are suppressed because counting them as "user activity"
+// creates a self-throttling endogeneity loop in the activity-skip
+// check (every fire would suppress the next ~4 polls regardless of
+// whether the user did anything). Diagnosed 2026-05-05 via session-id
+// correlation between autodream_log fires and heartbeat entries.
+const autodreamInvocationEnvVar = "LJM_AUTODREAM_INVOCATION"
+
 // writeSessionHeartbeat appends a single JSONL line to
 // Metrics/session_heartbeat.jsonl recording that real activity occurred at
 // the given moment. Used by autodream's activity-based skip detection: a
 // recent heartbeat means a session is doing real work and quiet-mode
 // daydreams should hold off. Failures are logged but never block hook flow.
+//
+// Returns nil (suppressing the write) when the LJM_AUTODREAM_INVOCATION
+// env var is set, indicating the session was spawned by autodream itself
+// rather than by the user. Counting autodream-spawned sessions as user
+// activity creates a 60-min self-throttle after every fire.
 func writeSessionHeartbeat(vaultRoot, sessionID, cwd string, ts time.Time) error {
+	if os.Getenv(autodreamInvocationEnvVar) == "1" {
+		return nil
+	}
+
 	dir := filepath.Join(vaultRoot, "Metrics")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return fmt.Errorf("mkdir Metrics: %w", err)

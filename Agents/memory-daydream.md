@@ -67,12 +67,17 @@ If your exploration produces a genuine finding (connection, gap, or question), p
 
 Filename: `YYYY-MM-DD_daydream-brief-description.md`
 
+**Required frontmatter** — use this exact schema. The four header
+fields are non-negotiable; deviation breaks downstream consolidation
+and signals a compliance bug. Substitute concrete values for every
+placeholder; never leave angle-bracket text in the persisted file.
+
 ```yaml
 ---
 type: buffer
-timestamp: <ISO 8601>
+timestamp: 2026-05-04T19:30:00-04:00
 source: daydream
-surprise: <0.3-0.7 based on how unexpected the finding is>
+surprise: 0.55
 context_integrity: full
 tags: [daydream, relevant, topic, tags]
 related: ["[[Memory/Knowledge/entry_that_triggered_this]]"]
@@ -82,6 +87,39 @@ related: ["[[Memory/Knowledge/entry_that_triggered_this]]"]
 why it might matter. Keep it self-contained — this will be evaluated
 during consolidation without access to your exploration process.>
 ```
+
+**Field rules — read carefully:**
+
+- `type: buffer` — **always**, regardless of what the finding is
+  about. Even if the finding feels semantic-class or knowledge-class,
+  `type: buffer` is the schema for new daydream entries; the
+  consolidation pipeline assigns the eventual category. Do not
+  write `type: semantic`, `type: knowledge`, etc. in `Buffer/Daydream/`
+  files — those types are for `Memory/` files only.
+- `timestamp` — current real time in ISO 8601 with timezone offset
+  (e.g. `2026-05-04T19:30:00-04:00`). Never `0001-01-01T00:00:00Z`
+  (that's a Go zero-value sentinel — a malformed-frontmatter signature),
+  and never the literal string `<ISO 8601>`.
+- `source: daydream` — exact literal, never empty.
+- `surprise` — a real float between 0.3 and 0.7 reflecting how
+  unexpected the finding is. Never `0.0` (that's the zero-value
+  default — also malformed-signature).
+
+**Common frontmatter mistakes — do not do these:**
+
+| Wrong | Right | Why |
+|---|---|---|
+| `type: semantic` | `type: buffer` | Buffer files are always `buffer`; consolidation handles category later |
+| `timestamp: 0001-01-01T00:00:00Z` | `timestamp: 2026-05-04T19:30:00-04:00` | Go zero-value, indicates skipped substitution |
+| `timestamp: <ISO 8601>` | `timestamp: 2026-05-04T19:30:00-04:00` | Literal placeholder, not substituted |
+| `source:` (empty) | `source: daydream` | Schema requires a value |
+| `surprise: 0.0` | `surprise: 0.55` | Zero-value default, indicates skipped substitution |
+
+If the finding is genuinely substantial enough that you think it
+deserves to be a Semantic memory immediately, the right action is
+**still** to write `type: buffer` here and rely on consolidation's
+LLM-judgment phase to promote it correctly. Do not try to short-cut
+the schema.
 
 ### How to persist the breadcrumb
 

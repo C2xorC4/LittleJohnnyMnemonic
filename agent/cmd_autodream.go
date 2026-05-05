@@ -823,15 +823,21 @@ func describeRun(res AutodreamRunResult) string {
 // the Claude Code runtime, not in the bare API.
 //
 // Sandbox handling: by default Claude Code's print mode restricts tool
-// access to the cwd. We need the agent to read seed files and write
-// breadcrumbs anywhere under the vault, so:
+// access to the cwd AND denies file-writing tools (Write/Edit) without
+// per-call permission prompts. We need the agent to:
 //
-//  1. cmd.Dir is set to vaultRoot so the project context resolves there.
-//  2. --add-dir <vaultRoot> grants explicit tool access to the whole vault.
+//  1. Read seed files and write breadcrumbs anywhere under the vault →
+//     `cmd.Dir = vaultRoot` (project context) + `--add-dir <vaultRoot>`
+//     (explicit tool-access grant).
+//  2. Write breadcrumb files without a prompt that nobody is there to
+//     accept → `--permission-mode acceptEdits` auto-accepts Write/Edit.
 //
-// This was discovered via the very first live fire — without these flags
-// the agent reports "sandbox restrictions prevent me from reading the
-// required files" and falls back to verdicts based on filenames alone.
+// History:
+//   - First live fire (2026-05-01): "sandbox restrictions prevent me from
+//     reading the required files" — fixed by adding cmd.Dir + --add-dir.
+//   - First scheduled fires (2026-05-02): agent runs but writes "Write tool
+//     was denied. Providing inline fallback" — breadcrumbs not persisted.
+//     Fixed by adding --permission-mode acceptEdits.
 func invokeClaudeCLIDaydream(vaultRoot string) AutodreamInvoker {
 	return func(prompt string) (string, string, error) {
 		claudeBin, err := exec.LookPath("claude")
@@ -853,9 +859,18 @@ func invokeClaudeCLIDaydream(vaultRoot string) AutodreamInvoker {
 
 		cmd := exec.CommandContext(ctx, claudeBin,
 			"--add-dir", vaultRoot,
+			"--permission-mode", "acceptEdits",
 			"-p", full,
 		)
 		cmd.Dir = vaultRoot
+		// Mark this claude session as autodream-spawned so the hook layer
+		// can suppress its session_heartbeat write. Without this, every
+		// autodream fire triggers a SessionStart hook that writes a
+		// heartbeat which then suppresses the next ~4 polls via
+		// activity_recent skip — a self-throttling endogeneity loop. The
+		// env var is inherited by the spawned `claude` process and read
+		// by `jm hook session-start` / `jm hook user-prompt-submit`.
+		cmd.Env = append(os.Environ(), "LJM_AUTODREAM_INVOCATION=1")
 		var stdout, stderr bytes.Buffer
 		cmd.Stdout = &stdout
 		cmd.Stderr = &stderr

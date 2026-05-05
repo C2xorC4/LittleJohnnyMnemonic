@@ -239,6 +239,18 @@ func ParseBufferEntry(path string) (*BufferEntry, error) {
 		entry.ContextIntegrity = ContextFull
 	}
 
+	// Buffer entries must have type=buffer. Daydream-agent compliance
+	// failures occasionally produce malformed frontmatter (type:semantic,
+	// type:knowledge, etc.) — see the 2026-05-04 audit. Auto-correct in
+	// memory and warn so the malformed file is normalized on next write
+	// and the operator can investigate the producing agent run.
+	if entry.Type != TypeBuffer {
+		fmt.Fprintf(os.Stderr,
+			"[parser] warning: buffer entry %s has type=%q, normalizing to %q\n",
+			path, entry.Type, TypeBuffer)
+		entry.Type = TypeBuffer
+	}
+
 	return entry, nil
 }
 
@@ -538,7 +550,16 @@ func WriteMemoryEntry(entry *MemoryEntry) error {
 }
 
 // WriteBufferEntry serializes a buffer entry back to disk (for hold_count updates).
+//
+// Belt-and-suspenders: forces entry.Type = TypeBuffer regardless of input.
+// A buffer entry persisted to disk MUST have type=buffer; the parser also
+// auto-corrects on read, but the canonical write happens here. Any caller
+// constructing a BufferEntry with a wrong Type (whether from a daydream
+// agent compliance failure or a future code regression) gets the schema-
+// correct serialization without needing to know about the rule.
 func WriteBufferEntry(entry *BufferEntry) error {
+	entry.Type = TypeBuffer
+
 	var buf bytes.Buffer
 	buf.WriteString("---\n")
 

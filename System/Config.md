@@ -328,16 +328,16 @@ Activity-based skip detection (replaces lockfile design): each mode skips its ru
 auto_daydream_enabled: true
 
 # Jitter — auto-daydream rolls a target interval in [min, max] minutes.
-auto_daydream_interval_min_minutes: 60
-auto_daydream_interval_max_minutes: 180
+auto_daydream_interval_min_minutes: 30
+auto_daydream_interval_max_minutes: 90
 
 # Daily caps split per mode.
 auto_daydream_max_per_day_active: 12
-auto_daydream_max_per_day_quiet: 6
+auto_daydream_max_per_day_quiet: 12
 
 # Quiet hours. Empty = quiet mode disabled (always active mode).
 # Format: "HH:MM-HH:MM"; wraparound supported (e.g., "23:00-06:00").
-auto_daydream_quiet_hours: ""
+auto_daydream_quiet_hours: "21:00-07:00"
 auto_daydream_quiet_hours_timezone: local         # local | utc
 
 # Activity-based skip windows. If activity within window, skip.
