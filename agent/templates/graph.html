@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{.Title}}</title>
+<style>{{.CSS}}</style>
+</head>
+<body>
+<header id="topbar">
+  <div id="brand">{{.Title}}</div>
+  <input type="search" id="search" placeholder="Search title or path…" autocomplete="off">
+  <div id="meta-summary" aria-live="polite"></div>
+</header>
+<div id="layout">
+  <aside id="filters">
+    <section class="filter-section">
+      <h3>Types</h3>
+      <div id="type-list" class="checkbox-list"></div>
+    </section>
+    <section class="filter-section">
+      <h3>Tags <span id="tag-count" class="muted"></span></h3>
+      <input type="search" id="tag-search" placeholder="Filter tags…" autocomplete="off">
+      <div id="tag-list" class="chip-list"></div>
+    </section>
+    <section class="filter-section">
+      <h3>Min activation</h3>
+      <input type="range" id="activation-slider" min="-10" max="5" step="0.1" value="-10">
+      <div class="slider-value">
+        <span id="activation-value">-10.0</span>
+        <span class="muted">(<span id="visible-count"></span> visible)</span>
+      </div>
+    </section>
+    <section class="filter-section">
+      <label class="toggle"><input type="checkbox" id="show-coactivation" checked> Coactivation edges</label>
+      <label class="toggle"><input type="checkbox" id="show-isolated"> Isolated nodes</label>
+      <label class="toggle"><input type="checkbox" id="show-tag-rings" checked> Primary-tag ring</label>
+    </section>
+    <section class="filter-section">
+      <button id="relayout" class="btn">Re-layout</button>
+      <button id="reset-filters" class="btn">Reset filters</button>
+    </section>
+  </aside>
+  <main id="graph-container">
+    <div id="graph"></div>
+    <div id="legend">
+      <h4>Types</h4>
+      <ul id="legend-types"></ul>
+      <h4>Edges</h4>
+      <ul id="legend-edges">
+        <li><span class="edge-swatch edge-explicit"></span> explicit link (thickness ∝ weight)</li>
+        <li><span class="edge-swatch edge-contradicts"></span> contradicts</li>
+        <li><span class="edge-swatch edge-supersedes"></span> supersedes (directed)</li>
+        <li><span class="edge-swatch edge-learned"></span> learned (from coactivation)</li>
+        <li><span class="edge-swatch edge-coactivation"></span> coactivation overlay</li>
+      </ul>
+    </div>
+    <div id="empty-state" hidden>
+      <h2>No memories yet</h2>
+      <p>The vault is empty. Buffer some observations and run <code>jm consolidate</code>.</p>
+    </div>
+    <div id="linkless-banner" hidden>
+      <span>No associative links yet. Try <code>jm learn-edges</code> to discover connections from coactivation.</span>
+    </div>
+  </main>
+  <aside id="detail" hidden>
+    <button id="detail-close" aria-label="Close panel">×</button>
+    <h2 id="detail-title"></h2>
+    <div id="detail-path" class="muted"></div>
+    <div id="detail-meta"></div>
+    <div id="detail-tags"></div>
+    <h3>Neighbors <span id="detail-neighbor-count" class="muted"></span></h3>
+    <ul id="detail-neighbors"></ul>
+  </aside>
+</div>
+<script>{{.Vendor}}</script>
+<script>const GRAPH_DATA = {{.Data}};</script>
+<script>{{.App}}</script>
+</body>
+</html>

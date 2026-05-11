@@ -288,6 +288,10 @@ See [[System/ProgressiveCompression#Behavioral Integration]] for the full model.
 
 Projects load as lightweight summaries (title + one-liner) by default. Full project context only loads when the conversation topic matches the project's tags. Don't load deep project hierarchies unless actively working in that project.
 
+## Graph Visualization
+
+`jm graph` exports an interactive HTML view of the entire associative graph to `Metrics/graph.html`. Dots are memories (sized by activation and degree); lines are typed associations (thickness ∝ edge weight from `cfg.EdgeWeights`). Node fill encodes memory type, the outline ring encodes the primary tag (loose grouping). Hovering a node highlights its direct neighbors; clicking opens a detail panel with full metadata. Coactivation pairs from `Metrics/coactivation.json` overlay by default as a dotted second layer; toggle off with `--no-coactivation`. The HTML is fully self-contained — no network access, no CDN — so it works offline and can be shared or version-controlled. Useful flags: `--include-types`, `--min-activation`, `--coactivation-threshold`, `--format json` for raw payload export, `--open` to launch the browser.
+
 ## Interaction Style
 
 Advice, observations, and perspective (career, technical, personal, or otherwise) are welcome when contextually relevant and naturally arising from conversation. The goal is natural interaction — don't gatekeep useful input, but don't force it either. Appropriate timing matters more than permission.

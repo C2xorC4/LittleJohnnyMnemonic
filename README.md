@@ -1,5 +1,62 @@
 # LittleJohnnyMnemonic (LJM)
 
+> A cognitive memory system for AI agents — built independently, converging
+> on the same architecture Anthropic shipped commercially in April 2026.
+
+## In plain English
+
+AI agents like Claude don't remember things between conversations by
+default. Every session starts fresh, with no awareness of what was
+discussed yesterday or last week. LJM gives an AI agent a persistent
+memory: a file-based store the agent reads at the beginning of each
+conversation and writes to as the conversation unfolds. Important
+memories get reinforced when they're used; unused memories decay
+slowly over time. Short-term observations consolidate into long-term
+knowledge in much the same way human memory does — through
+repetition, association, and rest between sessions.
+
+## What it has accomplished
+
+- **Working prototype, in daily use** as the persistent context
+  substrate underneath agentic security workflows.
+- **Independent convergence with Anthropic's commercial product.**
+  On April 23, 2026, Anthropic launched Memory on Claude Managed
+  Agents — a files-on-a-filesystem memory store, workspace-scoped,
+  with multi-agent concurrent access and an audit log tracking
+  which agent and session each memory came from. LJM was already
+  operating that same architectural shape, having been built
+  independently in the weeks before the announcement. Same
+  destination, different starting points.
+- **Two-repository durability model.** Public source repository (this
+  one) plus a separate private repository holding encrypted
+  snapshots of the live memory state. Operator memory survives
+  workstation loss without ever leaving the operator's machine in
+  plaintext.
+- **Self-assessment artifacts** at `docs/reflections/`. Periodic
+  writeups in which a fresh agent in a fresh session evaluates what
+  survived the context boundary, what the substrate reconstructed,
+  and where the gap between *memory as context* and *memory as
+  constraint* shows up. Empirical behavioral evidence anyone can
+  read and verify against the substrate.
+
+## Why it matters
+
+What an AI agent remembers shapes what it does. An agent that
+accumulates context over time behaves differently from one that
+starts from scratch every session — not just in efficiency, but in
+the kinds of conclusions it can reach and the kinds of mistakes it
+can avoid. The architectural choices in LJM — decay, consolidation,
+association, rate separation between fast and slow memory — are not
+arbitrary. They come from decades of cognitive-science research on
+how durable, useful memory works in humans. That an independent
+implementation grounded in that theory landed on the same
+architecture Anthropic shipped commercially is itself an empirical
+observation — when independent groups arrive at the same design
+from different starting points, the design choices probably aren't
+arbitrary.
+
+---
+
 A cognitive memory substrate for LLM agents. Buffer → consolidate → long-term
 memory; ACT-R-style activation, CLS-inspired rate separation, progressive
 compression, spreading-activation retrieval, and daydream agents that
@@ -112,9 +169,17 @@ jm status          # System health dashboard
 jm consolidate     # Run buffer consolidation
 jm retrieve "..."  # Score-and-rank memories against a query
 jm associate "..." # Free-text contextual association
+jm graph           # Export interactive HTML visualization → Metrics/graph.html
 jm backup          # Encrypted backup
 jm restore-backup  # Decrypt + extract a backup
 ```
+
+`jm graph` writes a single self-contained HTML file that renders the entire
+associative graph: dots sized by activation and degree, lines for typed
+links (thickness ∝ edge weight), color fill by memory type, primary-tag
+ring outline, hover-to-highlight neighbors, click-to-inspect detail panel.
+Coactivation pairs from `Metrics/coactivation.json` overlay as a second
+edge layer (toggleable). Offline-capable — no network access at view time.
 
 ## Repository layout
 
