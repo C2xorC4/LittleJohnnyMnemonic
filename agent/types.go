@@ -26,9 +26,19 @@ const (
 )
 
 // Link represents a typed associative connection between memories.
+//
+// Weight is an optional per-link override for the relationship-type weight
+// looked up from Config.EdgeWeights. When nil, retrieval uses the type
+// default (e.g., "related-to" → 0.5). When non-nil, the value overrides
+// the default for spreading-activation purposes. See System/AssociativeMap.md
+// for the adaptive-weighting design and the averages-collapse-context
+// tradeoff. The adaptive-weighting pilot (Config.AdaptiveEdgeWeighting*)
+// further modulates effective weight via citation-driven usage counters,
+// but that path is opt-in and out-of-pilot scope for authored edges.
 type Link struct {
-	Target       string `yaml:"target"`
-	Relationship string `yaml:"relationship"`
+	Target       string   `yaml:"target"`
+	Relationship string   `yaml:"relationship"`
+	Weight       *float64 `yaml:"weight,omitempty"`
 }
 
 // BufferEntry represents a short-term memory buffer item.
@@ -210,6 +220,23 @@ type Config struct {
 	EdgeWeights               map[string]float64 `yaml:"edge_weights"`
 	FanDiscountFormula        string             `yaml:"fan_discount_formula"` // "log" | "sqrt" | "linear" | "none"
 
+	// Adaptive edge weighting (pilot) — usage-derived multiplier applied to
+	// edges in `AdaptiveEdgeScope`. Off by default; even when enabled the
+	// multiplier is 1.0 (no effect) until citation events accumulate usage.
+	// See System/AssociativeMap.md for the design and the
+	// averages-collapse-context tradeoff.
+	AdaptiveEdgeWeightingEnabled bool     `yaml:"adaptive_edge_weighting_enabled"`
+	AdaptiveEdgeScope            []string `yaml:"adaptive_edge_scope"` // relationship types eligible; pilot default = ["learned"]
+	AdaptiveEdgeAlpha            float64  `yaml:"adaptive_edge_alpha"` // log multiplier coefficient
+	AdaptiveEdgeCap              float64  `yaml:"adaptive_edge_cap"`   // max effective multiplier vs base weight
+
+	// Retrieval session logging — required for adaptive reinforcement.
+	// Off by default; persists session ID + loaded memory list per retrieve
+	// call so a later citation can identify which neighbors of the cited
+	// memory were loaded together.
+	RetrievalSessionLogEnabled        bool `yaml:"retrieval_session_log_enabled"`
+	RetrievalSessionLogRetentionDays  int  `yaml:"retrieval_session_log_retention_days"`
+
 	// User modeling
 	ObservationConfidenceCaps map[int]float64    `yaml:"observation_confidence_caps"`
 	UserFacetDecayRates       map[string]float64 `yaml:"user_facet_decay_rates"`
@@ -352,6 +379,14 @@ func DefaultConfig() Config {
 			"instance-of":  0.4,
 			"learned":      0.4,
 		},
+
+		AdaptiveEdgeWeightingEnabled: false,
+		AdaptiveEdgeScope:            []string{"learned"},
+		AdaptiveEdgeAlpha:            0.2,
+		AdaptiveEdgeCap:              2.0,
+
+		RetrievalSessionLogEnabled:       false,
+		RetrievalSessionLogRetentionDays: 14,
 
 		ObservationConfidenceCaps: map[int]float64{
 			1: 0.6,

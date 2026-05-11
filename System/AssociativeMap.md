@@ -97,6 +97,70 @@ neighbor_boost(n, m) = activation(m) × edge_weight(relationship) × 0.3
 | `instance-of` | 0.4 | Examples help but aren't always needed |
 | `learned` | 0.4 | Emergent — discovered through repeated co-activation, not explicit curation |
 
+### Adaptive Edge Weighting (citation-driven, pilot)
+
+Relationship-type defaults above are the baseline. When the adaptive-
+weighting pilot is enabled, each edge's effective weight is layered:
+
+```
+effective = (authored_override OR base_relationship_weight)
+          × (1 + alpha × ln(1 + usage_count))   ← applied only when:
+                                                   1. adaptive_edge_weighting_enabled
+                                                   2. relationship ∈ adaptive_edge_scope
+                                                   3. usage_count > 0
+                                                ↑ capped at adaptive_edge_cap × base
+```
+
+**Authored override** (optional `weight:` field on individual links)
+takes precedence over the relationship-type default, then the
+adaptive multiplier scales the result. With the master toggle off,
+the adaptive layer no-ops and behaviour is identical to pre-pilot.
+
+**Reward signal:** `usage_count` increments when a citation event
+arrives with a retrieval session ID whose loaded set contains both
+endpoints of the edge. See `Metrics/retrieval_sessions.jsonl` and
+`Metrics/edge_usage.jsonl` for the on-disk substrate, and
+`System/Config.md` § "Adaptive Edge Weighting (pilot)" for tuning
+knobs.
+
+**Pilot scope:** `learned` edges only by default. Authored edges
+(`related-to`, `refines`, etc.) keep the relationship-type baseline
+plus any explicit `weight:` override. The pilot is judged
+successful and the scope is widened only when the maturity criteria
+in the pilot plan are met (citation discipline holding, no
+runaway reinforcement, observable retrieval-quality lift).
+
+**Inspection:** `jm edges --inspect <memory_key>` prints the
+outgoing edges of a memory with base / authored-override / usage /
+effective weight columns. `jm status` summarises the pilot state
+and lists the top-reinforced edges.
+
+### Tradeoff — averages-collapse-context (accepted in v1)
+
+A single scalar weight per edge averages relevance across all
+contexts where the link has fired. If `argus →
+argus_detector_design_principles` is tight in binary-analysis
+contexts and loose in career-narrative contexts, the averaged
+weight understates both. The fix (per-context-tag weights) would
+explode storage and authoring overhead and is deferred until the
+averaged-scalar v1 approach proves too coarse in practice. The
+fan-effect discount already provides some context-discrimination
+through the spreading-activation math; v1 accepts that as
+sufficient until empirical evidence demands more.
+
+### Endogeneity guardrail
+
+The reward signal for adaptive weighting comes from **citations**
+(an outside-the-retrieval-system event), not from co-occurrence
+alone. If reinforcement were sourced from retrieval co-occurrence,
+edges between retrieved-together memories would reinforce
+themselves, producing self-confirming weights that drift from real
+usefulness. Citations require an explicit "this memory was used in
+produced output" call — they cannot be inferred from retrieval
+loading alone, which preserves the external-signal property.
+Citations without `session_id` record the citation event but do
+**not** trigger reinforcement.
+
 ### Activation Cap
 
 Spreading activation propagates **one hop only** — no transitive spreading. This prevents the entire memory graph from lighting up when any node is accessed. The retrieval algorithm:

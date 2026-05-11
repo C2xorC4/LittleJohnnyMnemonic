@@ -11,7 +11,7 @@ func cmdStatus(vaultRoot string, args []string) {
 	fs := flag.NewFlagSet("status", flag.ExitOnError)
 	fs.Parse(args)
 
-	cfg := DefaultConfig()
+	cfg := LoadConfig(vaultRoot)
 	now := time.Now()
 
 	title := "LittleJohnnyMnemonic - System Status"
@@ -148,6 +148,26 @@ func cmdStatus(vaultRoot string, args []string) {
 			fmt.Printf("           Lowest:  %.3f (%s)\n",
 				scored[len(scored)-1].Total, scored[len(scored)-1].Memory.Title)
 		}
+	}
+
+	// Adaptive edge weighting status — surfaces pilot state so the
+	// operator can see at a glance whether reinforcement is active
+	// and how many edges have non-base effective weight.
+	fmt.Println()
+	if cfg.AdaptiveEdgeWeightingEnabled {
+		nonDefault, top := adaptiveEdgeStats(cfg, vaultRoot, 5)
+		fmt.Printf("Adaptive edges: enabled (scope: %s; alpha=%.2f; cap=%.2fx)\n",
+			strings.Join(cfg.AdaptiveEdgeScope, ","), cfg.AdaptiveEdgeAlpha, cfg.AdaptiveEdgeCap)
+		fmt.Printf("                %d edges with non-default effective weight\n", nonDefault)
+		if len(top) > 0 {
+			fmt.Println("                Top reinforced:")
+			for _, s := range top {
+				fmt.Printf("                  [%3d×] %s → %s (%s)  base=%.2f → eff=%.3f\n",
+					s.UsageCount, truncate(s.Source, 30), truncate(s.Target, 30), s.Relationship, s.Base, s.Effective)
+			}
+		}
+	} else {
+		fmt.Println("Adaptive edges: disabled (master toggle: adaptive_edge_weighting_enabled)")
 	}
 
 	fmt.Println()

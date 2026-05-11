@@ -165,6 +165,68 @@ coactivation_edge_threshold: 3  # co-activations before suggesting an edge
 coactivation_max_contexts: 5    # sample contexts stored per pair
 ```
 
+### Adaptive Edge Weighting (pilot)
+
+Citation-driven per-link weight adjustment layered on top of the
+relationship-type `edge_weights` above. Off by default; opt in once
+the retrieval session log and citation discipline are in place.
+
+When enabled:
+
+1. `cmd_retrieve` writes one `RetrievalSession` per call to
+   `Metrics/retrieval_sessions.jsonl` containing the session ID and
+   the set of loaded memory keys.
+2. `jm associate --cite "<key>,<context>,<useful>" --session <id>`
+   ties a citation back to the retrieval session. For each other
+   memory loaded in that session, the edge with `<key>` is found
+   (in either direction) and — if its relationship is in
+   `adaptive_edge_scope` — its `usage_count` increments in
+   `Metrics/edge_usage.jsonl`.
+3. `BuildGraph` reads `edge_usage.jsonl` and multiplies effective
+   edge weight by `1 + adaptive_edge_alpha × ln(1 + usage_count)`,
+   capped at `adaptive_edge_cap × base_weight`.
+
+```yaml
+# Master toggle. Opt-in to avoid silent retrieval behaviour change.
+adaptive_edge_weighting_enabled: false
+
+# Relationship types eligible for adaptive weighting. Pilot default
+# is `learned` only — authored edges keep their relationship-type
+# default plus any optional `weight:` override until the pilot is
+# judged successful and the scope is widened.
+adaptive_edge_scope: ["learned"]
+
+# Multiplier curve: effective = base × (1 + alpha × ln(1 + usage_count))
+adaptive_edge_alpha: 0.2
+
+# Hard ceiling on the multiplier (capped at adaptive_edge_cap × base).
+# Prevents runaway reinforcement on edges that fire repeatedly in a
+# tight time window.
+adaptive_edge_cap: 2.0
+```
+
+Reset path: delete `Metrics/edge_usage.jsonl` and effective weights
+return to the relationship-type baseline. The retrieval session log
+and authored `weight:` overrides are unaffected by the reset.
+
+### Retrieval Session Logging
+
+Required substrate for adaptive edge weighting. Records the set of
+memories loaded together so subsequent citation events can identify
+which neighbors of the cited memory were in scope.
+
+```yaml
+# Enable persisting retrieval sessions to Metrics/retrieval_sessions.jsonl.
+# Must be true for adaptive edge weighting reinforcement to work; harmless
+# if enabled without adaptive weighting (just produces an inert log).
+retrieval_session_log_enabled: false
+
+# Prune sessions older than N days on each retrieve call. Set to 0 to
+# disable pruning entirely (log will grow without bound — only do this
+# if you have an external rotation strategy).
+retrieval_session_log_retention_days: 14
+```
+
 ### Fan Effect (ACT-R)
 
 ACT-R predicts that a source concept connected to many other concepts

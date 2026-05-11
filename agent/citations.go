@@ -8,11 +8,19 @@ import (
 )
 
 // Citation records when a knowledge entry materially contributed to an answer.
+//
+// SessionID is optional and links the citation back to the retrieval session
+// that loaded the memory. When set, the citation triggers adaptive edge-weight
+// reinforcement: every other memory in the session's loaded set has its edge
+// with this memory's `usage_count` incremented (subject to AdaptiveEdgeScope).
+// Citations without SessionID record the citation event but do NOT reinforce
+// any edges — preserves the v0 behaviour of the manual `--cite` flag.
 type Citation struct {
 	MemoryKey string    `json:"memory_key"`
 	Context   string    `json:"context"`    // brief description of how it was used
 	Timestamp time.Time `json:"timestamp"`
 	Useful    bool      `json:"useful"`     // was the entry actually helpful?
+	SessionID string    `json:"session_id,omitempty"`
 }
 
 // CitationLog persists citation data for knowledge feedback.
@@ -64,6 +72,21 @@ func RecordCitation(log *CitationLog, memoryKey, context string, useful bool) {
 		Context:   truncate(context, 200),
 		Timestamp: time.Now(),
 		Useful:    useful,
+	})
+}
+
+// RecordCitationWithSession adds a citation entry tagged with a retrieval
+// session ID. Used by adaptive edge weighting to link "memory X was loaded
+// in session S" → "later memory Y (also in S) was cited useful" → reinforce
+// edge(X, Y). Callers should invoke RecordEdgeUsageFromCitation separately
+// after persisting the citation to actually apply the reinforcement.
+func RecordCitationWithSession(log *CitationLog, memoryKey, context string, useful bool, sessionID string) {
+	log.Citations = append(log.Citations, Citation{
+		MemoryKey: memoryKey,
+		Context:   truncate(context, 200),
+		Timestamp: time.Now(),
+		Useful:    useful,
+		SessionID: sessionID,
 	})
 }
 

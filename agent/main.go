@@ -35,6 +35,8 @@ Commands:
   restore-backup  Decrypt and extract a backup (distinct from "restore" — see -h)
   autodream    Auto-daydream scheduler (jitter + mode + replay; see Config.md)
   daydream     Daydream finding triage — review or list pending entries
+  graph        Export interactive HTML visualization of the memory graph
+  edges        Inspect outgoing edges of a memory (base / authored / effective weights, usage)
 
 Use "jm <command> -h" for command-specific help.
 `
@@ -97,6 +99,10 @@ func main() {
 		cmdAutodream(vaultRoot, args)
 	case "daydream":
 		cmdDaydream(vaultRoot, args)
+	case "graph":
+		cmdGraph(vaultRoot, args)
+	case "edges":
+		cmdEdges(vaultRoot, args)
 	case "-h", "--help", "help":
 		fmt.Print(usage)
 	default:

@@ -204,6 +204,145 @@ func TestParseMemoryEntry_Roundtrip(t *testing.T) {
 	}
 }
 
+func TestParseMemoryEntry_LinkWeight_Roundtrip(t *testing.T) {
+	// Optional per-link weight override: nil → omitted, value → preserved.
+	// See System/AssociativeMap.md for the adaptive-weighting design.
+	dir := t.TempDir()
+	path := filepath.Join(dir, "weighted_links.md")
+
+	w := 0.65
+	original := &MemoryEntry{
+		Type:               TypeUser,
+		Title:              "Test entry with weighted link",
+		Created:            time.Date(2026, 5, 11, 14, 0, 0, 0, time.UTC),
+		LastAccessed:       time.Date(2026, 5, 11, 14, 0, 0, 0, time.UTC),
+		AccessCount:        1,
+		DecayRate:          0.3,
+		Confidence:         0.9,
+		SurpriseAtEncoding: 0.5,
+		Tags:               []string{"test"},
+		Links: []Link{
+			{Target: "Memory/User/with_weight", Relationship: "refines", Weight: &w},
+			{Target: "Memory/User/without_weight", Relationship: "related-to"},
+		},
+		Body:     "Round-trip test for optional link weight.",
+		FilePath: path,
+	}
+
+	if err := WriteMemoryEntry(original); err != nil {
+		t.Fatalf("WriteMemoryEntry: %v", err)
+	}
+
+	// Confirm the weight field is serialized correctly (and only for the
+	// link that supplied it).
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
+	rawStr := string(raw)
+	if !strings.Contains(rawStr, "weight: 0.65") {
+		t.Errorf("expected 'weight: 0.65' in serialized output, got:\n%s", rawStr)
+	}
+	// The second link has no weight; ensure no stray 'weight:' line follows
+	// the second 'relationship: related-to'.
+	idx := strings.Index(rawStr, "relationship: related-to")
+	if idx < 0 {
+		t.Fatalf("missing second link relationship in output:\n%s", rawStr)
+	}
+	tail := rawStr[idx:]
+	endOfLinks := strings.Index(tail, "\n---")
+	if endOfLinks < 0 {
+		endOfLinks = len(tail)
+	}
+	if strings.Contains(tail[:endOfLinks], "weight:") {
+		t.Errorf("nil-weight link should not emit 'weight:' line; tail:\n%s", tail[:endOfLinks])
+	}
+
+	parsed, err := ParseMemoryEntry(path)
+	if err != nil {
+		t.Fatalf("ParseMemoryEntry: %v", err)
+	}
+
+	if len(parsed.Links) != 2 {
+		t.Fatalf("links count = %d, expected 2", len(parsed.Links))
+	}
+
+	// Find each link by relationship.
+	var refinesLink, relatedLink *Link
+	for i := range parsed.Links {
+		switch parsed.Links[i].Relationship {
+		case "refines":
+			refinesLink = &parsed.Links[i]
+		case "related-to":
+			relatedLink = &parsed.Links[i]
+		}
+	}
+	if refinesLink == nil {
+		t.Fatalf("refines link missing after roundtrip")
+	}
+	if relatedLink == nil {
+		t.Fatalf("related-to link missing after roundtrip")
+	}
+	if refinesLink.Weight == nil {
+		t.Errorf("refines link Weight is nil, expected pointer to 0.65")
+	} else if *refinesLink.Weight != 0.65 {
+		t.Errorf("refines link Weight = %v, expected 0.65", *refinesLink.Weight)
+	}
+	if relatedLink.Weight != nil {
+		t.Errorf("related-to link Weight = %v, expected nil", *relatedLink.Weight)
+	}
+}
+
+func TestParseLinks_WeightDoesNotEndLinksBlock(t *testing.T) {
+	// The end-of-links detection in parseLinks() looks for non-indented
+	// keys. Adding "weight:" must not be mistaken for a new top-level key
+	// inside a links block — confirm that a multi-link block with a
+	// weight on the first link still parses the second link correctly.
+	dir := t.TempDir()
+	path := filepath.Join(dir, "weight_midblock.md")
+
+	body := `---
+type: user
+title: "Weight in middle of links block"
+created: 2026-05-11T14:00:00Z
+last_accessed: 2026-05-11T14:00:00Z
+access_count: 1
+decay_rate: 0.3
+confidence: 0.9
+surprise_at_encoding: 0.5
+tags: [test]
+links:
+  - target: "[[Memory/User/first]]"
+    relationship: refines
+    weight: 0.75
+  - target: "[[Memory/User/second]]"
+    relationship: related-to
+---
+
+Body
+`
+	if err := os.WriteFile(path, []byte(body), 0644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	parsed, err := ParseMemoryEntry(path)
+	if err != nil {
+		t.Fatalf("ParseMemoryEntry: %v", err)
+	}
+	if len(parsed.Links) != 2 {
+		t.Fatalf("links count = %d, expected 2; parsed links: %+v", len(parsed.Links), parsed.Links)
+	}
+	if parsed.Links[0].Weight == nil || *parsed.Links[0].Weight != 0.75 {
+		t.Errorf("first link Weight = %v, expected 0.75", parsed.Links[0].Weight)
+	}
+	if parsed.Links[1].Weight != nil {
+		t.Errorf("second link Weight = %v, expected nil", *parsed.Links[1].Weight)
+	}
+	if parsed.Links[1].Relationship != "related-to" {
+		t.Errorf("second link relationship = %s, expected related-to", parsed.Links[1].Relationship)
+	}
+}
+
 func TestParseMemoryEntry_TrainingOverride(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "override.md")

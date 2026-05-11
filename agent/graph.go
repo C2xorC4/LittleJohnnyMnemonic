@@ -6,6 +6,65 @@ import (
 	"strings"
 )
 
+// effectiveEdgeWeight resolves the runtime weight for a single Link
+// based on (1) the relationship-type default in cfg.EdgeWeights,
+// (2) an optional authored per-link override (link.Weight), and
+// (3) a usage-derived multiplier from edge_usage data when adaptive
+// edge weighting is enabled and the relationship is in scope.
+//
+// Resolution order:
+//   1. base = cfg.EdgeWeights[relationship] (or 0.5 if unmapped)
+//   2. authored override (link.Weight != nil) replaces base
+//   3. adaptive multiplier scales the result if enabled+in-scope
+//
+// The function is split out from BuildGraph so it can be unit-tested
+// without constructing a full graph and so the inspection tooling
+// (jm edges --inspect) can call it directly.
+func effectiveEdgeWeight(sourceKey, targetKey string, link Link, cfg Config, usage map[string]EdgeUsage) float64 {
+	baseWeight := cfg.EdgeWeights[link.Relationship]
+	if baseWeight == 0 {
+		baseWeight = 0.5 // default for unmapped relationship types
+	}
+	effective := baseWeight
+	if link.Weight != nil {
+		effective = *link.Weight
+	}
+
+	if !cfg.AdaptiveEdgeWeightingEnabled {
+		return effective
+	}
+	if !inAdaptiveScope(link.Relationship, cfg.AdaptiveEdgeScope) {
+		return effective
+	}
+	if usage == nil {
+		return effective
+	}
+
+	key := edgeUsageKey(sourceKey, targetKey, link.Relationship)
+	u, ok := usage[key]
+	if !ok || u.UsageCount <= 0 {
+		return effective
+	}
+
+	// Adaptive multiplier: 1 + α × ln(1 + usage_count), capped at AdaptiveEdgeCap.
+	// usage=0 → multiplier=1 (no change), usage grows logarithmically.
+	mult := 1.0 + cfg.AdaptiveEdgeAlpha*math.Log(1.0+float64(u.UsageCount))
+	cap := cfg.AdaptiveEdgeCap
+	if cap > 0 && mult > cap {
+		mult = cap
+	}
+	return effective * mult
+}
+
+func inAdaptiveScope(relationship string, scope []string) bool {
+	for _, r := range scope {
+		if r == relationship {
+			return true
+		}
+	}
+	return false
+}
+
 // MemoryGraph represents the associative map as an adjacency list.
 type MemoryGraph struct {
 	// Adjacency: normalized memory key → list of edges
@@ -23,7 +82,25 @@ type Edge struct {
 }
 
 // BuildGraph constructs the associative map from all loaded memories.
+//
+// Edge weights are resolved per-link via effectiveEdgeWeight, which
+// layers (1) the relationship-type default from cfg.EdgeWeights,
+// (2) the optional authored per-link Weight override, and (3) the
+// citation-driven adaptive multiplier from Metrics/edge_usage.jsonl
+// when the adaptive-weighting pilot is enabled and the relationship
+// is in cfg.AdaptiveEdgeScope. With the master toggle off (default),
+// the adaptive layer no-ops and behaviour is identical to pre-pilot.
+//
+// The vault root is required only to load edge_usage; if the caller
+// passes "" or the file is missing, adaptive lookups silently no-op.
 func BuildGraph(memories []*MemoryEntry, cfg Config) *MemoryGraph {
+	return BuildGraphWithUsage(memories, cfg, nil)
+}
+
+// BuildGraphWithUsage is the test-friendly form of BuildGraph that
+// accepts a pre-loaded edge_usage map. Production callers should use
+// BuildGraph or BuildGraphFromVault.
+func BuildGraphWithUsage(memories []*MemoryEntry, cfg Config, usage map[string]EdgeUsage) *MemoryGraph {
 	g := &MemoryGraph{
 		Edges: make(map[string][]Edge),
 		Index: make(map[string]*MemoryEntry),
@@ -35,10 +112,7 @@ func BuildGraph(memories []*MemoryEntry, cfg Config) *MemoryGraph {
 
 		for _, link := range m.Links {
 			targetKey := normalizeLinkTarget(link.Target)
-			weight := cfg.EdgeWeights[link.Relationship]
-			if weight == 0 {
-				weight = 0.5 // default for unknown relationship types
-			}
+			weight := effectiveEdgeWeight(key, targetKey, link, cfg, usage)
 
 			edge := Edge{
 				Source:       key,
@@ -48,7 +122,11 @@ func BuildGraph(memories []*MemoryEntry, cfg Config) *MemoryGraph {
 			}
 			g.Edges[key] = append(g.Edges[key], edge)
 
-			// Bidirectional for most relationship types
+			// Bidirectional for most relationship types. The reverse
+			// edge uses the same effective weight — adaptive
+			// reinforcement applies symmetrically because the citation
+			// flow records both directions when both endpoints are in
+			// the loaded set (see RecordEdgeUsageFromCitation).
 			if link.Relationship != "supersedes" {
 				reverse := Edge{
 					Source:       targetKey,
@@ -62,6 +140,20 @@ func BuildGraph(memories []*MemoryEntry, cfg Config) *MemoryGraph {
 	}
 
 	return g
+}
+
+// BuildGraphFromVault loads edge_usage from disk and constructs the
+// graph with the adaptive layer applied. Use this when you have a
+// vault root in hand; falls back to a usage-less graph if the load
+// fails (the citation pipeline tolerates the absence gracefully).
+func BuildGraphFromVault(memories []*MemoryEntry, cfg Config, vaultRoot string) *MemoryGraph {
+	var usage map[string]EdgeUsage
+	if cfg.AdaptiveEdgeWeightingEnabled && vaultRoot != "" {
+		if u, err := LoadEdgeUsage(vaultRoot); err == nil {
+			usage = u
+		}
+	}
+	return BuildGraphWithUsage(memories, cfg, usage)
 }
 
 // ApplySpreadingActivation boosts neighbors of already-activated memories.

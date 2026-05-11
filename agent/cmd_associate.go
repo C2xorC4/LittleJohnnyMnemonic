@@ -17,13 +17,14 @@ func cmdAssociate(vaultRoot string, args []string) {
 	noUpdate := fs.Bool("no-update", false, "Don't update access metadata")
 	readTop := fs.Int("read", 0, "Output full body text for top N results (for LLM semantic evaluation)")
 	cite := fs.String("cite", "", "Record citation for a memory key (comma-separated: key,context,useful)")
+	citeSession := fs.String("session", "", "Retrieval session ID to link this citation to (enables adaptive edge weighting reinforcement)")
 	fs.Parse(args)
 
 	// Handle citation recording
 	if *cite != "" {
 		parts := strings.SplitN(*cite, ",", 3)
 		if len(parts) < 2 {
-			fmt.Fprintln(os.Stderr, "Usage: --cite 'memory_key,context[,true|false]'")
+			fmt.Fprintln(os.Stderr, "Usage: --cite 'memory_key,context[,true|false]' [--session <id>]")
 			os.Exit(1)
 		}
 		useful := true
@@ -35,12 +36,32 @@ func cmdAssociate(vaultRoot string, args []string) {
 			fmt.Fprintf(os.Stderr, "[!] Failed to load citations: %v\n", err)
 			os.Exit(1)
 		}
-		RecordCitation(cLog, parts[0], parts[1], useful)
+		if *citeSession != "" {
+			RecordCitationWithSession(cLog, parts[0], parts[1], useful, *citeSession)
+		} else {
+			RecordCitation(cLog, parts[0], parts[1], useful)
+		}
 		if err := SaveCitations(vaultRoot, cLog); err != nil {
 			fmt.Fprintf(os.Stderr, "[!] Failed to save citation: %v\n", err)
 			os.Exit(1)
 		}
 		fmt.Printf("Citation recorded: %s (%s)\n", parts[0], parts[1])
+
+		// Adaptive-edge-weighting reinforcement: only fires when a session
+		// ID is supplied AND the pilot is enabled in Config. Reinforcement
+		// is best-effort — failures are warnings, not fatal errors, so the
+		// citation event itself is durable regardless of the weighting state.
+		if *citeSession != "" && useful {
+			cfg := LoadConfig(vaultRoot)
+			if cfg.AdaptiveEdgeWeightingEnabled {
+				reinforced, err := RecordEdgeUsageFromCitation(vaultRoot, *citeSession, parts[0], cfg.AdaptiveEdgeScope)
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "[!] Edge usage reinforcement failed (citation still recorded): %v\n", err)
+				} else if len(reinforced) > 0 {
+					fmt.Printf("Edges reinforced: %d\n", len(reinforced))
+				}
+			}
+		}
 		return
 	}
 

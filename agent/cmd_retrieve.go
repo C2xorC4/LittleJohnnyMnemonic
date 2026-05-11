@@ -14,9 +14,10 @@ func cmdRetrieve(vaultRoot string, args []string) {
 	intent := fs.String("intent", "", "Query intent: guidance, who, what, where")
 	format := fs.String("format", "full", "Output format: full, summary, json")
 	noUpdate := fs.Bool("no-update", false, "Don't update access metadata")
+	noSession := fs.Bool("no-session", false, "Don't write a retrieval session log entry even if enabled in Config")
 	fs.Parse(args)
 
-	cfg := DefaultConfig()
+	cfg := LoadConfig(vaultRoot)
 	now := time.Now()
 
 	memories, err := LoadAllMemories(vaultRoot)
@@ -40,8 +41,10 @@ func cmdRetrieve(vaultRoot string, args []string) {
 	// Score all memories
 	scored := ScoreAllMemories(memories, contextTags, *intent, cfg, now)
 
-	// Build graph and apply spreading activation
-	graph := BuildGraph(memories, cfg)
+	// Build graph and apply spreading activation. Use the vault-aware
+	// constructor so adaptive edge weighting (citation-driven usage
+	// multiplier) is layered in when enabled.
+	graph := BuildGraphFromVault(memories, cfg, vaultRoot)
 	scored = ApplySpreadingActivation(scored, graph, cfg)
 
 	// Filter by threshold and cap
@@ -75,6 +78,35 @@ func cmdRetrieve(vaultRoot string, args []string) {
 		}
 	}
 
+	// Retrieval session logging — required substrate for adaptive edge
+	// weighting reinforcement. When enabled, persist the loaded-together
+	// set under a session_id that subsequent `jm associate --cite
+	// --session <id>` calls can reference.
+	sessionID := ""
+	if cfg.RetrievalSessionLogEnabled && !*noSession && len(retrieved) > 0 {
+		sessionID = GenerateSessionID()
+		loaded := make([]string, 0, len(retrieved))
+		for _, s := range retrieved {
+			loaded = append(loaded, MemoryKey(s.Memory))
+		}
+		session := RetrievalSession{
+			SessionID:    sessionID,
+			Timestamp:    now,
+			Loaded:       loaded,
+			QueryContext: *intent,
+			QueryTags:    contextTags,
+		}
+		if err := AppendRetrievalSession(vaultRoot, session); err != nil {
+			fmt.Fprintf(os.Stderr, "[!] Failed to write retrieval session: %v\n", err)
+			sessionID = "" // suppress session_id output if persistence failed
+		} else {
+			// Opportunistic pruning — keeps log bounded without a separate command.
+			if cfg.RetrievalSessionLogRetentionDays > 0 {
+				_, _ = PruneRetrievalSessions(vaultRoot, cfg.RetrievalSessionLogRetentionDays)
+			}
+		}
+	}
+
 	// Output
 	switch *format {
 	case "summary":
@@ -84,6 +116,66 @@ func cmdRetrieve(vaultRoot string, args []string) {
 	default:
 		outputFull(retrieved, graph)
 	}
+
+	// Surface session_id at the very end so it's easy to grab from
+	// terminal output for a follow-on `jm associate --cite --session <id>`.
+	if sessionID != "" {
+		fmt.Printf("\nsession_id: %s\n", sessionID)
+	}
+}
+
+// MemoryKey returns the canonical "memory/type/filename" identifier
+// used in retrieval_sessions.jsonl and edge_usage.jsonl. Lower-cased
+// to match the form produced by graph.normalizeKey() so that the
+// adaptive-edge-weighting lookup in BuildGraph can match session-loaded
+// keys against graph node keys without further normalisation.
+func MemoryKey(m *MemoryEntry) string {
+	if m.FilePath == "" {
+		return strings.ToLower(m.FileName)
+	}
+	p := m.FilePath
+	idx := indexOfMemoryRoot(p)
+	if idx < 0 {
+		return strings.ToLower(m.FileName)
+	}
+	rel := p[idx:]
+	// Normalize separators and strip .md
+	rel = normalizeSlash(rel)
+	if len(rel) > 3 && rel[len(rel)-3:] == ".md" {
+		rel = rel[:len(rel)-3]
+	}
+	return strings.ToLower(rel)
+}
+
+func indexOfMemoryRoot(p string) int {
+	// Look for "Memory/" or "Memory\" as the path root marker.
+	for _, marker := range []string{"Memory/", "Memory\\"} {
+		if i := lastIndex(p, marker); i >= 0 {
+			return i
+		}
+	}
+	return -1
+}
+
+func lastIndex(s, sub string) int {
+	for i := len(s) - len(sub); i >= 0; i-- {
+		if s[i:i+len(sub)] == sub {
+			return i
+		}
+	}
+	return -1
+}
+
+func normalizeSlash(p string) string {
+	out := make([]byte, 0, len(p))
+	for i := 0; i < len(p); i++ {
+		if p[i] == '\\' {
+			out = append(out, '/')
+		} else {
+			out = append(out, p[i])
+		}
+	}
+	return string(out)
 }
 
 func outputFull(retrieved []ScoredMemory, graph *MemoryGraph) {

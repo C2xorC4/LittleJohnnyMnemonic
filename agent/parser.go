@@ -109,7 +109,7 @@ func parseLinks(yaml string) []Link {
 			// Critical: clear current after saving, otherwise the post-loop
 			// append below double-saves the final link every time the links
 			// section is followed by another frontmatter field.
-			if !strings.HasPrefix(line, " ") && !strings.HasPrefix(line, "\t") && strings.Contains(trimmed, ":") && !strings.HasPrefix(trimmed, "- ") && !strings.HasPrefix(trimmed, "target:") && !strings.HasPrefix(trimmed, "relationship:") {
+			if !strings.HasPrefix(line, " ") && !strings.HasPrefix(line, "\t") && strings.Contains(trimmed, ":") && !strings.HasPrefix(trimmed, "- ") && !strings.HasPrefix(trimmed, "target:") && !strings.HasPrefix(trimmed, "relationship:") && !strings.HasPrefix(trimmed, "weight:") {
 				if current.Target != "" {
 					links = append(links, current)
 					current = Link{}
@@ -127,6 +127,14 @@ func parseLinks(yaml string) []Link {
 				current.Target = extractQuotedValue(strings.TrimPrefix(trimmed, "target:"))
 			} else if strings.HasPrefix(trimmed, "relationship:") {
 				current.Relationship = extractQuotedValue(strings.TrimPrefix(trimmed, "relationship:"))
+			} else if strings.HasPrefix(trimmed, "weight:") {
+				raw := strings.TrimSpace(strings.TrimPrefix(trimmed, "weight:"))
+				raw = strings.Trim(raw, "\"'")
+				if raw != "" {
+					if w, err := strconv.ParseFloat(raw, 64); err == nil {
+						current.Weight = &w
+					}
+				}
 			}
 		}
 	}
@@ -489,6 +497,9 @@ func WriteMemoryEntry(entry *MemoryEntry) error {
 		for _, l := range entry.Links {
 			buf.WriteString(fmt.Sprintf("  - target: \"[[%s]]\"\n", l.Target))
 			buf.WriteString(fmt.Sprintf("    relationship: %s\n", l.Relationship))
+			if l.Weight != nil {
+				buf.WriteString(fmt.Sprintf("    weight: %.2f\n", *l.Weight))
+			}
 		}
 	}
 

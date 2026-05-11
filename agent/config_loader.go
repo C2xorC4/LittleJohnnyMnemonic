@@ -278,6 +278,28 @@ func applyScalarOverrides(cfg *Config, s map[string]string) {
 		cfg.FanDiscountFormula = stripQuotes(v)
 	}
 
+	if v, ok := s["adaptive_edge_weighting_enabled"]; ok {
+		cfg.AdaptiveEdgeWeightingEnabled = atobOrKeep(v, cfg.AdaptiveEdgeWeightingEnabled)
+	}
+	if v, ok := s["adaptive_edge_scope"]; ok {
+		if list := parseCSVList(v); len(list) > 0 {
+			cfg.AdaptiveEdgeScope = list
+		}
+	}
+	if v, ok := s["adaptive_edge_alpha"]; ok {
+		cfg.AdaptiveEdgeAlpha = atofOrKeep(v, cfg.AdaptiveEdgeAlpha)
+	}
+	if v, ok := s["adaptive_edge_cap"]; ok {
+		cfg.AdaptiveEdgeCap = atofOrKeep(v, cfg.AdaptiveEdgeCap)
+	}
+
+	if v, ok := s["retrieval_session_log_enabled"]; ok {
+		cfg.RetrievalSessionLogEnabled = atobOrKeep(v, cfg.RetrievalSessionLogEnabled)
+	}
+	if v, ok := s["retrieval_session_log_retention_days"]; ok {
+		cfg.RetrievalSessionLogRetentionDays = atoiOrKeep(v, cfg.RetrievalSessionLogRetentionDays)
+	}
+
 	if v, ok := s["profile_creation_threshold"]; ok {
 		cfg.ProfileCreationThreshold = atoiOrKeep(v, cfg.ProfileCreationThreshold)
 	}

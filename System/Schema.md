@@ -84,6 +84,7 @@ tags: [go, tooling, preference]
 links:                                  # typed associative links (see AssociativeMap)
   - target: "[[Memory/Category/entry]]"
     relationship: related-to            # related-to | refines | contradicts | depends-on | supersedes | instance-of
+    weight: 0.65                        # OPTIONAL — overrides the relationship-type default from Config.edge_weights
 
 # --- Optional fields (include when applicable) ---
 # For training overrides (see ConflictResolution):
