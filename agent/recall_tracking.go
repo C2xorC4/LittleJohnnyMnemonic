@@ -23,10 +23,11 @@ type recallLogEntry struct {
 	Slugs     []string       `json:"slugs,omitempty"` // only in verbose mode
 }
 
-// writeRecallMetrics is called after AssociateMemories in runUserPromptSubmit.
-// Emits recall metrics to console (stderr, not injected into model context)
-// and/or the JSONL recall log, based on Config. Never blocks or panics —
-// all errors are logged to stderr and swallowed.
+// writeRecallMetrics is called before writePromptAssociationContext in
+// runUserPromptSubmit. Emits a compact recall summary to stdout (so it
+// appears in the <system-reminder> visible to the user in the conversation)
+// and/or the JSONL recall log. Never blocks or panics — all errors are
+// logged to stderr and swallowed.
 func writeRecallMetrics(vaultRoot string, results []AssociatedMemory, sessionID string, promptLen int) {
 	if len(results) == 0 {
 		return
@@ -40,7 +41,7 @@ func writeRecallMetrics(vaultRoot string, results []AssociatedMemory, sessionID 
 	toLog := cfg.RecallTrackingDisplay == "log" || cfg.RecallTrackingDisplay == "both"
 
 	if toConsole {
-		writeRecallConsole(os.Stderr, results, cfg.RecallTrackingVerbosity)
+		writeRecallConsole(os.Stdout, results, cfg.RecallTrackingVerbosity)
 	}
 	if toLog {
 		entry := buildRecallLogEntry(results, sessionID, promptLen, cfg.RecallTrackingVerbosity)
