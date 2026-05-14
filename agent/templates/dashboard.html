@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{.Title}}</title>
+<style>{{.CSS}}</style>
+</head>
+<body>
+<header id="topbar">
+  <div id="brand">{{.Title}}</div>
+  <div id="header-actions">
+    <span id="generated-at"></span>
+    <span id="live-indicator" style="display:none">
+      <span id="live-dot"></span><span id="live-label">live</span>
+    </span>
+    <a id="graph-link" href="#" target="_blank">Memory Graph →</a>
+  </div>
+</header>
+
+<main id="dashboard">
+
+  <section class="chart-card" id="card-recall">
+    <div class="card-header">
+      <h2>Recall / Day</h2>
+      <div class="card-header-right">
+        <div class="card-meta" id="meta-recall"></div>
+        <button id="recall-smooth-toggle" class="card-toggle active">7d avg</button>
+      </div>
+    </div>
+    <div class="canvas-wrap"><canvas id="chart-recall" height="200"></canvas></div>
+    <div class="legend" id="legend-recall"></div>
+  </section>
+
+  <section class="chart-card" id="card-promotes">
+    <div class="card-header">
+      <h2>Memory Promotions / Day</h2>
+      <div class="card-meta" id="meta-promotes"></div>
+    </div>
+    <div class="canvas-wrap"><canvas id="chart-promotes" height="200"></canvas></div>
+  </section>
+
+  <section class="chart-card" id="card-depth">
+    <div class="card-header">
+      <h2>Vault Depth Over Time</h2>
+      <div class="card-meta" id="meta-depth"></div>
+    </div>
+    <div class="canvas-wrap"><canvas id="chart-depth" height="200"></canvas></div>
+    <div class="legend" id="legend-depth"></div>
+  </section>
+
+  <section class="chart-card" id="card-daydream">
+    <div class="card-header">
+      <h2>Daydream Activity / Day</h2>
+      <div class="card-meta" id="meta-daydream"></div>
+    </div>
+    <div class="canvas-wrap"><canvas id="chart-daydream" height="200"></canvas></div>
+  </section>
+
+</main>
+
+<div id="tooltip" role="tooltip"></div>
+
+<script>window.__DASHBOARD_DATA__ = {{.Data}}; window.__DASHBOARD_MODE__ = '{{.Mode}}';</script>
+<script>{{.App}}</script>
+</body>
+</html>

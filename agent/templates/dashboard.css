@@ -1,0 +1,237 @@
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg:        #0f0f1a;
+  --surface:   #16162a;
+  --border:    #2a2a45;
+  --text:      #d0d0e8;
+  --muted:     #6b6b8a;
+  --accent:    #7c83e0;
+  --grid:      rgba(255,255,255,0.04);
+
+  --c-episodic:  #e07b54;
+  --c-feedback:  #4ecdc4;
+  --c-knowledge: #45b7d1;
+  --c-project:   #96ceb4;
+  --c-reference: #f0c94a;
+  --c-semantic:  #c084fc;
+  --c-user:      #6ee7b7;
+}
+
+html, body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  font-size: 14px;
+  min-height: 100vh;
+}
+
+/* ── Header ──────────────────────────────────────────────── */
+#topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 20px;
+  height: 48px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+#brand {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--accent);
+  letter-spacing: 0.02em;
+}
+
+#header-actions {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+
+#generated-at {
+  color: var(--muted);
+  font-size: 12px;
+  font-family: monospace;
+}
+
+#graph-link {
+  color: var(--accent);
+  text-decoration: none;
+  font-size: 13px;
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  transition: border-color 0.15s, background 0.15s;
+}
+#graph-link:hover {
+  border-color: var(--accent);
+  background: rgba(124,131,224,0.08);
+}
+
+/* Live indicator */
+#live-indicator {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-family: monospace;
+  color: var(--muted);
+}
+
+#live-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #4ade80;
+  box-shadow: 0 0 0 0 rgba(74,222,128,0.6);
+  animation: pulse 2.4s ease-out infinite;
+}
+
+#live-dot.stale {
+  background: #f59e0b;
+  box-shadow: none;
+  animation: none;
+}
+
+#live-dot.error {
+  background: #f87171;
+  box-shadow: none;
+  animation: none;
+}
+
+@keyframes pulse {
+  0%   { box-shadow: 0 0 0 0 rgba(74,222,128,0.6); }
+  70%  { box-shadow: 0 0 0 5px rgba(74,222,128,0); }
+  100% { box-shadow: 0 0 0 0 rgba(74,222,128,0); }
+}
+
+/* ── Dashboard grid ──────────────────────────────────────── */
+#dashboard {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+  padding: 20px;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+@media (max-width: 820px) {
+  #dashboard { grid-template-columns: 1fr; }
+}
+
+/* ── Chart cards ─────────────────────────────────────────── */
+.chart-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px 16px 12px;
+}
+
+.card-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.chart-card h2 {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.card-meta {
+  font-size: 11px;
+  color: var(--muted);
+  font-family: monospace;
+}
+
+.card-header-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.card-toggle {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 10px;
+  font-family: monospace;
+  padding: 2px 7px;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+  white-space: nowrap;
+}
+.card-toggle:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.card-toggle.active {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: rgba(124,131,224,0.1);
+}
+
+.canvas-wrap {
+  position: relative;
+  width: 100%;
+}
+
+.canvas-wrap canvas {
+  display: block;
+  width: 100%;
+}
+
+/* ── Legend ──────────────────────────────────────────────── */
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  margin-top: 10px;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+/* ── Tooltip ─────────────────────────────────────────────── */
+#tooltip {
+  position: fixed;
+  display: none;
+  background: #1e1e35;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text);
+  pointer-events: none;
+  z-index: 200;
+  max-width: 220px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+}
+
+#tooltip b {
+  color: var(--accent);
+  font-size: 12px;
+}
