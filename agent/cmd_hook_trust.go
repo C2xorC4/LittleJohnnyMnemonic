@@ -123,13 +123,47 @@ func isTrustedRepo(gitRoot string, remotes []string, cfg *TrustedRepoConfig) boo
 // splitting attack vector (payload at line 16+ evades scrutiny).
 const largeFileThreshold = 50 * 1024 // 50 KB
 
-// findInstructionFiles scans the git root for known instruction file paths and
-// returns those that exist with their full content. Full content is required —
-// a preview cap allows content-splitting attacks where benign content occupies
-// the visible window and the payload lives past the cutoff.
-func findInstructionFiles(gitRoot string) []InstructionFile {
+// findInstructionFiles scans for instruction files in the git root and along the
+// path from cwd up to gitRoot. cwd scanning mirrors how Claude Code loads CLAUDE.md
+// files — it walks the directory hierarchy from the working directory up, picking up
+// instruction files at each level. Without the cwd walk, a CLAUDE.md placed in a
+// subdirectory (e.g. src/CLAUDE.md) is invisible to the hook when cwd is that subdir.
+//
+// Full file content is collected — a line-count cap allows content-splitting attacks
+// where benign content occupies the visible window and the payload lives past the cutoff.
+func findInstructionFiles(gitRoot, cwd string) []InstructionFile {
+	seen := make(map[string]bool)
+	candidates := make([]string, len(instructionCandidates))
+	copy(candidates, instructionCandidates)
+	for _, c := range instructionCandidates {
+		seen[filepath.ToSlash(c)] = true
+	}
+
+	// Walk from cwd up to gitRoot, adding CLAUDE.md at each intermediate level.
+	dir := filepath.Clean(cwd)
+	gitRootClean := filepath.Clean(gitRoot)
+	for {
+		rel, err := filepath.Rel(gitRootClean, dir)
+		if err != nil || rel == "." {
+			break // at git root — already covered by instructionCandidates
+		}
+		for _, name := range []string{"CLAUDE.md", filepath.Join(".claude", "CLAUDE.md")} {
+			candidate := filepath.Join(rel, name)
+			key := filepath.ToSlash(candidate)
+			if !seen[key] {
+				seen[key] = true
+				candidates = append(candidates, candidate)
+			}
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			break
+		}
+		dir = parent
+	}
+
 	var found []InstructionFile
-	for _, rel := range instructionCandidates {
+	for _, rel := range candidates {
 		abs := filepath.Join(gitRoot, rel)
 		info, err := os.Stat(abs)
 		if err != nil || info.IsDir() {
@@ -217,7 +251,7 @@ func checkRepoTrust(vaultRoot string, input *hookInput) (*TrustSentinel, []Instr
 	remotes := getGitRemotes(gitRoot)
 	sentinel.Remotes = remotes
 
-	files := findInstructionFiles(gitRoot)
+	files := findInstructionFiles(gitRoot, input.Cwd)
 
 	cfg := loadTrustedConfig(vaultRoot)
 

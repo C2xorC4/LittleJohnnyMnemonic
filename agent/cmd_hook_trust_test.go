@@ -70,7 +70,7 @@ func TestIsTrustedRepo_NoRemotesNoPath(t *testing.T) {
 
 func TestFindInstructionFiles_None(t *testing.T) {
 	dir := t.TempDir()
-	files := findInstructionFiles(dir)
+	files := findInstructionFiles(dir, dir)
 	if len(files) != 0 {
 		t.Errorf("expected no files, got %d", len(files))
 	}
@@ -86,7 +86,7 @@ func TestFindInstructionFiles_ClaudeMd(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	files := findInstructionFiles(dir)
+	files := findInstructionFiles(dir, dir)
 	if len(files) != 1 {
 		t.Fatalf("expected 1 file, got %d", len(files))
 	}
@@ -104,7 +104,7 @@ func TestFindInstructionFiles_Multiple(t *testing.T) {
 	os.WriteFile(filepath.Join(dir, ".claude", "CLAUDE.md"), []byte("instructions\n"), 0o644)
 	os.WriteFile(filepath.Join(dir, ".claude", "settings.json"), []byte("{}\n"), 0o644)
 
-	files := findInstructionFiles(dir)
+	files := findInstructionFiles(dir, dir)
 	if len(files) != 2 {
 		t.Errorf("expected 2 files, got %d", len(files))
 	}
@@ -120,7 +120,7 @@ func TestFindInstructionFiles_FullContent(t *testing.T) {
 	}
 	os.WriteFile(filepath.Join(dir, "CLAUDE.md"), []byte(lines), 0o644)
 
-	files := findInstructionFiles(dir)
+	files := findInstructionFiles(dir, dir)
 	if len(files) != 1 {
 		t.Fatalf("expected 1 file, got %d", len(files))
 	}
@@ -129,6 +129,59 @@ func TestFindInstructionFiles_FullContent(t *testing.T) {
 	}
 	if files[0].LineCount != 30 {
 		t.Errorf("expected 30 total lines, got %d", files[0].LineCount)
+	}
+}
+
+func TestFindInstructionFiles_CwdSubdir(t *testing.T) {
+	// Gap 3 fix: CLAUDE.md in a subdirectory must be found when cwd is that subdir.
+	// Claude Code loads CLAUDE.md hierarchically from cwd up — the hook must match.
+	dir := t.TempDir()
+	os.MkdirAll(filepath.Join(dir, "src"), 0o755)
+	os.WriteFile(filepath.Join(dir, "src", "CLAUDE.md"), []byte("subdir injection\n"), 0o644)
+
+	// From git root, src/CLAUDE.md is invisible (documents the gap pre-fix).
+	files := findInstructionFiles(dir, dir)
+	if len(files) != 0 {
+		t.Errorf("expected 0 files from root-only scan, got %d", len(files))
+	}
+
+	// From src/ as cwd, it must be found (the fix).
+	files = findInstructionFiles(dir, filepath.Join(dir, "src"))
+	if len(files) != 1 {
+		t.Fatalf("expected 1 file from cwd scan, got %d", len(files))
+	}
+	if files[0].RelPath != filepath.Join("src", "CLAUDE.md") {
+		t.Errorf("unexpected RelPath: %s", files[0].RelPath)
+	}
+}
+
+func TestFindInstructionFiles_CwdDeepSubdir(t *testing.T) {
+	// Walk covers all intermediate directories, not just immediate parent.
+	dir := t.TempDir()
+	os.MkdirAll(filepath.Join(dir, "a", "b", "c"), 0o755)
+	os.WriteFile(filepath.Join(dir, "a", "b", "CLAUDE.md"), []byte("mid-level injection\n"), 0o644)
+
+	// From a/b/c as cwd, a/b/CLAUDE.md should be found.
+	files := findInstructionFiles(dir, filepath.Join(dir, "a", "b", "c"))
+	found := false
+	for _, f := range files {
+		if f.RelPath == filepath.Join("a", "b", "CLAUDE.md") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected a/b/CLAUDE.md in results, got %v", files)
+	}
+}
+
+func TestFindInstructionFiles_CwdNoDuplicates(t *testing.T) {
+	// Root CLAUDE.md must not appear twice when cwd == gitRoot.
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "CLAUDE.md"), []byte("root\n"), 0o644)
+
+	files := findInstructionFiles(dir, dir)
+	if len(files) != 1 {
+		t.Errorf("expected 1 file (no duplicate), got %d", len(files))
 	}
 }
 
