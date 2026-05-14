@@ -313,6 +313,19 @@ func applyScalarOverrides(cfg *Config, s map[string]string) {
 		cfg.ProfileImmuneToArchival = atobOrKeep(v, cfg.ProfileImmuneToArchival)
 	}
 
+	if v, ok := s["recall_tracking_enabled"]; ok {
+		cfg.RecallTrackingEnabled = atobOrKeep(v, cfg.RecallTrackingEnabled)
+	}
+	if v, ok := s["recall_tracking_display"]; ok {
+		cfg.RecallTrackingDisplay = stripQuotes(v)
+	}
+	if v, ok := s["recall_tracking_verbosity"]; ok {
+		cfg.RecallTrackingVerbosity = stripQuotes(v)
+	}
+	if v, ok := s["recall_tracking_log_path"]; ok {
+		cfg.RecallTrackingLogPath = stripQuotes(v)
+	}
+
 	if v, ok := s["backup_enabled"]; ok {
 		cfg.BackupEnabled = atobOrKeep(v, cfg.BackupEnabled)
 	}

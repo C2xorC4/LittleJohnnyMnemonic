@@ -287,6 +287,7 @@ func runUserPromptSubmit(vaultRoot string, input *hookInput) {
 	}
 
 	writePromptAssociationContext(os.Stdout, results)
+	writeRecallMetrics(vaultRoot, results, input.SessionID, len(prompt))
 
 	surfaceFreshDaydreamsToHook(vaultRoot, prompt, input.SessionID, time.Now())
 

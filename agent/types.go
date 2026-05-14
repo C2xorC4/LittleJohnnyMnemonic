@@ -246,6 +246,16 @@ type Config struct {
 	ProfileRevisionThreshold  int                `yaml:"profile_revision_threshold"`
 	ProfileImmuneToArchival   bool               `yaml:"profile_immune_to_archival"`
 
+	// Recall tracking — logs memory retrieval events per user-prompt-submit.
+	// Measures system utilization by category; feeds a time-series log for
+	// graphing recall frequency vs vault depth over time.
+	// display: console (stderr) | log (JSONL file) | both
+	// verbosity: summary (counts only) | verbose (counts + memory slugs)
+	RecallTrackingEnabled   bool   `yaml:"recall_tracking_enabled"`
+	RecallTrackingDisplay   string `yaml:"recall_tracking_display"`
+	RecallTrackingVerbosity string `yaml:"recall_tracking_verbosity"`
+	RecallTrackingLogPath   string `yaml:"recall_tracking_log_path"`
+
 	// Encrypted backup (cloud-password-manager model — local age encryption,
 	// blob-only transport, key never leaves the machine).
 	// Flat-key namespace: backup_* scalars in Config.md.
@@ -418,6 +428,11 @@ func DefaultConfig() Config {
 		ProfileConfidenceFloor:   0.5,
 		ProfileRevisionThreshold: 2,
 		ProfileImmuneToArchival:  true,
+
+		RecallTrackingEnabled:   true,
+		RecallTrackingDisplay:   "console",
+		RecallTrackingVerbosity: "summary",
+		RecallTrackingLogPath:   "Metrics/recall_log.jsonl",
 
 		// Backup defaults — disabled until the user runs `jm backup --init-key`
 		// and explicitly enables. Local target defaults to a sibling of the
