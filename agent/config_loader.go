@@ -316,14 +316,14 @@ func applyScalarOverrides(cfg *Config, s map[string]string) {
 	if v, ok := s["recall_tracking_enabled"]; ok {
 		cfg.RecallTrackingEnabled = atobOrKeep(v, cfg.RecallTrackingEnabled)
 	}
-	if v, ok := s["recall_tracking_display"]; ok {
-		cfg.RecallTrackingDisplay = stripQuotes(v)
-	}
 	if v, ok := s["recall_tracking_verbosity"]; ok {
 		cfg.RecallTrackingVerbosity = stripQuotes(v)
 	}
 	if v, ok := s["recall_tracking_log_path"]; ok {
 		cfg.RecallTrackingLogPath = stripQuotes(v)
+	}
+	if v, ok := s["recall_log_retention_days"]; ok {
+		cfg.RecallLogRetentionDays = atoiOrKeep(v, cfg.RecallLogRetentionDays)
 	}
 
 	if v, ok := s["backup_enabled"]; ok {

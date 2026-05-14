@@ -103,6 +103,8 @@ func main() {
 		cmdGraph(vaultRoot, args)
 	case "edges":
 		cmdEdges(vaultRoot, args)
+	case "metrics":
+		cmdMetrics(vaultRoot, args)
 	case "-h", "--help", "help":
 		fmt.Print(usage)
 	default:

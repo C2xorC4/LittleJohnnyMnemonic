@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -23,11 +24,20 @@ type recallLogEntry struct {
 	Slugs     []string       `json:"slugs,omitempty"` // only in verbose mode
 }
 
+// recallDayEntry is a compressed daily aggregate that replaces per-prompt
+// entries for dates older than the configured retention window.
+type recallDayEntry struct {
+	Date         string         `json:"date"`          // "2026-05-14" UTC
+	Granularity  string         `json:"granularity"`   // always "day"
+	Prompts      int            `json:"prompts"`
+	TotalRecalls int            `json:"total_recalls"`
+	AvgTotal     float64        `json:"avg_total"`
+	Counts       map[string]int `json:"counts"`
+}
+
 // writeRecallMetrics is called before writePromptAssociationContext in
-// runUserPromptSubmit. Emits a compact recall summary to stdout (so it
-// appears in the <system-reminder> visible to the user in the conversation)
-// and/or the JSONL recall log. Never blocks or panics — all errors are
-// logged to stderr and swallowed.
+// runUserPromptSubmit. Appends a recall record to the JSONL log. Never
+// blocks or panics — all errors are logged to stderr and swallowed.
 func writeRecallMetrics(vaultRoot string, results []AssociatedMemory, sessionID string, promptLen int) {
 	if len(results) == 0 {
 		return
@@ -36,24 +46,166 @@ func writeRecallMetrics(vaultRoot string, results []AssociatedMemory, sessionID 
 	if !cfg.RecallTrackingEnabled {
 		return
 	}
+	entry := buildRecallLogEntry(results, sessionID, promptLen, cfg.RecallTrackingVerbosity)
+	appendRecallLog(filepath.Join(vaultRoot, cfg.RecallTrackingLogPath), entry)
+}
 
-	toConsole := cfg.RecallTrackingDisplay == "console" || cfg.RecallTrackingDisplay == "both"
-	toLog := cfg.RecallTrackingDisplay == "log" || cfg.RecallTrackingDisplay == "both"
-
-	if toConsole {
-		writeRecallConsole(os.Stdout, results, cfg.RecallTrackingVerbosity)
+// compactRecallLog compresses per-prompt entries older than windowDays into
+// daily aggregates. Entries within the window are preserved verbatim.
+// Existing daily entries are merged if their date overlaps with newly
+// compacted granular entries. Returns the number of granular entries replaced.
+// If dryRun is true, no file is written and the count is still returned.
+func compactRecallLog(logPath string, windowDays int, dryRun bool) (int, error) {
+	data, err := os.ReadFile(logPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return 0, nil
+		}
+		return 0, err
 	}
-	if toLog {
-		entry := buildRecallLogEntry(results, sessionID, promptLen, cfg.RecallTrackingVerbosity)
-		appendRecallLog(filepath.Join(vaultRoot, cfg.RecallTrackingLogPath), entry)
+
+	cutoff := time.Now().UTC().Truncate(24 * time.Hour).AddDate(0, 0, -windowDays)
+
+	var oldGranular []recallLogEntry
+	var recentGranular []recallLogEntry
+	existingDaily := map[string]recallDayEntry{}
+
+	for _, line := range strings.Split(strings.TrimSpace(string(data)), "\n") {
+		if line == "" {
+			continue
+		}
+		// Discriminate by presence of "granularity" key.
+		var disc struct {
+			Granularity string `json:"granularity"`
+		}
+		_ = json.Unmarshal([]byte(line), &disc)
+
+		if disc.Granularity == "day" {
+			var d recallDayEntry
+			if err := json.Unmarshal([]byte(line), &d); err == nil {
+				existingDaily[d.Date] = d
+			}
+			continue
+		}
+
+		var g recallLogEntry
+		if err := json.Unmarshal([]byte(line), &g); err != nil || g.Timestamp == "" {
+			continue
+		}
+		t, err := time.Parse(time.RFC3339, g.Timestamp)
+		if err != nil {
+			continue
+		}
+		if t.UTC().Before(cutoff) {
+			oldGranular = append(oldGranular, g)
+		} else {
+			recentGranular = append(recentGranular, g)
+		}
+	}
+
+	if len(oldGranular) == 0 {
+		return 0, nil
+	}
+
+	// Group old granular entries by UTC date.
+	byDate := map[string][]recallLogEntry{}
+	for _, g := range oldGranular {
+		t, _ := time.Parse(time.RFC3339, g.Timestamp)
+		date := t.UTC().Format("2006-01-02")
+		byDate[date] = append(byDate[date], g)
+	}
+
+	// Aggregate each date group, merging with any existing daily entry.
+	for date, entries := range byDate {
+		newDay := aggregateDayEntry(date, entries)
+		if prev, ok := existingDaily[date]; ok {
+			newDay = mergeDayEntries(prev, newDay)
+		}
+		existingDaily[date] = newDay
+	}
+
+	if dryRun {
+		return len(oldGranular), nil
+	}
+
+	// Rebuild: daily entries (sorted by date) then recent granular (sorted by timestamp).
+	dates := make([]string, 0, len(existingDaily))
+	for d := range existingDaily {
+		dates = append(dates, d)
+	}
+	sort.Strings(dates)
+
+	var buf bytes.Buffer
+	for _, d := range dates {
+		b, _ := json.Marshal(existingDaily[d])
+		buf.Write(b)
+		buf.WriteByte('\n')
+	}
+	for _, g := range recentGranular {
+		b, _ := json.Marshal(g)
+		buf.Write(b)
+		buf.WriteByte('\n')
+	}
+
+	return len(oldGranular), os.WriteFile(logPath, buf.Bytes(), 0o644)
+}
+
+// aggregateDayEntry builds a recallDayEntry from a slice of same-day granular entries.
+func aggregateDayEntry(date string, entries []recallLogEntry) recallDayEntry {
+	counts := map[string]int{}
+	totalRecalls := 0
+	for _, e := range entries {
+		totalRecalls += e.Total
+		for k, v := range e.Counts {
+			counts[k] += v
+		}
+	}
+	avg := 0.0
+	if len(entries) > 0 {
+		avg = float64(totalRecalls) / float64(len(entries))
+	}
+	return recallDayEntry{
+		Date:         date,
+		Granularity:  "day",
+		Prompts:      len(entries),
+		TotalRecalls: totalRecalls,
+		AvgTotal:     avg,
+		Counts:       counts,
 	}
 }
 
-// writeRecallConsole writes a compact recall line to w (stderr).
+// mergeDayEntries combines two daily entries for the same date (e.g. when
+// running compact a second time after new entries have been added for an
+// already-compacted date).
+func mergeDayEntries(a, b recallDayEntry) recallDayEntry {
+	counts := map[string]int{}
+	for k, v := range a.Counts {
+		counts[k] += v
+	}
+	for k, v := range b.Counts {
+		counts[k] += v
+	}
+	prompts := a.Prompts + b.Prompts
+	total := a.TotalRecalls + b.TotalRecalls
+	avg := 0.0
+	if prompts > 0 {
+		avg = float64(total) / float64(prompts)
+	}
+	return recallDayEntry{
+		Date:         a.Date,
+		Granularity:  "day",
+		Prompts:      prompts,
+		TotalRecalls: total,
+		AvgTotal:     avg,
+		Counts:       counts,
+	}
+}
+
+// formatRecallLine formats a compact recall summary for display or logging.
 //
 // Summary: [recall] feedback:2 semantic:3 user:1 (total:6)
 // Verbose:  [recall] feedback:2 (slug_a, slug_b) | semantic:3 (slug_c) | user:1 (slug_d) (total:6)
-func writeRecallConsole(w io.Writer, results []AssociatedMemory, verbosity string) {
+func formatRecallLine(w io.Writer, results []AssociatedMemory, verbosity string) {
 	counts := make(map[string]int)
 	byType := make(map[string][]string)
 	for _, r := range results {

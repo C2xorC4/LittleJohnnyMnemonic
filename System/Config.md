@@ -188,7 +188,7 @@ When enabled:
 
 ```yaml
 # Master toggle. Opt-in to avoid silent retrieval behaviour change.
-adaptive_edge_weighting_enabled: false
+adaptive_edge_weighting_enabled: true
 
 # Relationship types eligible for adaptive weighting. Pilot default
 # is `learned` only — authored edges keep their relationship-type
@@ -219,7 +219,7 @@ which neighbors of the cited memory were in scope.
 # Enable persisting retrieval sessions to Metrics/retrieval_sessions.jsonl.
 # Must be true for adaptive edge weighting reinforcement to work; harmless
 # if enabled without adaptive weighting (just produces an inert log).
-retrieval_session_log_enabled: false
+retrieval_session_log_enabled: true
 
 # Prune sessions older than N days on each retrieve call. Set to 0 to
 # disable pruning entirely (log will grow without bound — only do this
@@ -349,6 +349,25 @@ density_cluster_weight: 25       # pressure from topic clustering (3+ shared tag
 density_consolidate_threshold: 70   # score >= 70 → consolidation recommended
 density_advisable_threshold: 45     # score >= 45 → consolidation advisable
 density_cluster_min_tags: 3         # minimum shared tag count for cluster detection
+```
+
+## Recall Tracking
+
+Per-prompt memory retrieval metrics. Feeds `Metrics/recall_log.jsonl` for
+time-series analysis (recall frequency by category vs vault depth over time).
+
+```yaml
+recall_tracking_enabled: true
+
+# verbosity: summary (counts by type) | verbose (counts + memory slugs)
+recall_tracking_verbosity: summary
+
+recall_tracking_log_path: Metrics/recall_log.jsonl
+
+# Granular per-prompt entries are retained for this many days.
+# Entries outside this window are compressed into daily aggregates
+# by `jm metrics compact`. Default 30.
+recall_log_retention_days: 30
 ```
 
 ## Knowledge Feedback (Citations)
