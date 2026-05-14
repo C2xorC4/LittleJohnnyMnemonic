@@ -110,7 +110,9 @@ func TestFindInstructionFiles_Multiple(t *testing.T) {
 	}
 }
 
-func TestFindInstructionFiles_Preview15Lines(t *testing.T) {
+func TestFindInstructionFiles_FullContent(t *testing.T) {
+	// Preview must capture ALL lines — a cap allows content-splitting attacks
+	// where payload is placed past the visible window.
 	dir := t.TempDir()
 	var lines string
 	for i := 0; i < 30; i++ {
@@ -122,8 +124,8 @@ func TestFindInstructionFiles_Preview15Lines(t *testing.T) {
 	if len(files) != 1 {
 		t.Fatalf("expected 1 file, got %d", len(files))
 	}
-	if len(files[0].Preview) != 15 {
-		t.Errorf("expected 15 preview lines, got %d", len(files[0].Preview))
+	if len(files[0].Preview) != 30 {
+		t.Errorf("expected all 30 preview lines, got %d", len(files[0].Preview))
 	}
 	if files[0].LineCount != 30 {
 		t.Errorf("expected 30 total lines, got %d", files[0].LineCount)

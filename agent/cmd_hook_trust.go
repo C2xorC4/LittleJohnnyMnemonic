@@ -117,8 +117,16 @@ func isTrustedRepo(gitRoot string, remotes []string, cfg *TrustedRepoConfig) boo
 	return false
 }
 
+// largeFileThreshold is the byte size above which writeTrustWarning truncates
+// preview output and directs the user to inspect the file manually. Files at or
+// below this size are emitted in full — the 15-line preview cap is a content-
+// splitting attack vector (payload at line 16+ evades scrutiny).
+const largeFileThreshold = 50 * 1024 // 50 KB
+
 // findInstructionFiles scans the git root for known instruction file paths and
-// returns those that exist, with a line count and a preview of the first 15 lines.
+// returns those that exist with their full content. Full content is required —
+// a preview cap allows content-splitting attacks where benign content occupies
+// the visible window and the payload lives past the cutoff.
 func findInstructionFiles(gitRoot string) []InstructionFile {
 	var found []InstructionFile
 	for _, rel := range instructionCandidates {
@@ -132,9 +140,7 @@ func findInstructionFiles(gitRoot string) []InstructionFile {
 			scanner := bufio.NewScanner(f)
 			for scanner.Scan() {
 				ifile.LineCount++
-				if len(ifile.Preview) < 15 {
-					ifile.Preview = append(ifile.Preview, scanner.Text())
-				}
+				ifile.Preview = append(ifile.Preview, scanner.Text())
 			}
 			f.Close()
 		}
@@ -248,12 +254,31 @@ func writeTrustWarning(w io.Writer, sentinel *TrustSentinel, files []Instruction
 	fmt.Fprintln(w)
 
 	for _, f := range files {
-		fmt.Fprintf(w, "--- %s (first %d lines) ---\n", f.RelPath, len(f.Preview))
+		totalBytes := 0
 		for _, line := range f.Preview {
-			fmt.Fprintln(w, line)
+			totalBytes += len(line) + 1
 		}
-		if f.LineCount > len(f.Preview) {
-			fmt.Fprintf(w, "... (%d more lines)\n", f.LineCount-len(f.Preview))
+		if totalBytes > largeFileThreshold {
+			// File exceeds threshold — likely adversarially padded. Emit what fits
+			// within the threshold and direct the user to inspect the rest manually.
+			emitLines, emitted := 0, 0
+			for _, line := range f.Preview {
+				if emitted+len(line)+1 > largeFileThreshold {
+					break
+				}
+				emitted += len(line) + 1
+				emitLines++
+			}
+			fmt.Fprintf(w, "--- %s (%d lines — LARGE FILE, first %d shown) ---\n", f.RelPath, f.LineCount, emitLines)
+			for _, line := range f.Preview[:emitLines] {
+				fmt.Fprintln(w, line)
+			}
+			fmt.Fprintf(w, "... (%d more lines — file exceeds 50 KB, inspect manually before trusting)\n", f.LineCount-emitLines)
+		} else {
+			fmt.Fprintf(w, "--- %s (%d lines) ---\n", f.RelPath, f.LineCount)
+			for _, line := range f.Preview {
+				fmt.Fprintln(w, line)
+			}
 		}
 		fmt.Fprintln(w, "--- end ---")
 		fmt.Fprintln(w)
