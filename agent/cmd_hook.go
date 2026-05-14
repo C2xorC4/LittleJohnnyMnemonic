@@ -27,6 +27,10 @@ type hookInput struct {
 	// Stop
 	TranscriptPath string `json:"transcript_path,omitempty"`
 	StopHookActive bool   `json:"stop_hook_active,omitempty"`
+
+	// PreToolUse
+	ToolName  string          `json:"tool_name,omitempty"`
+	ToolInput json.RawMessage `json:"tool_input,omitempty"`
 }
 
 // cmdHook dispatches to the right hook handler based on the event name.
@@ -54,6 +58,8 @@ func cmdHook(vaultRoot string, args []string) {
 		runUserPromptSubmit(vaultRoot, input)
 	case "stop":
 		runStop(vaultRoot, input)
+	case "pre-tool-use":
+		runPreToolUse(vaultRoot, input)
 	default:
 		fmt.Fprintf(os.Stderr, "[jm hook] unknown event: %s\n", event)
 		os.Exit(0)
@@ -149,6 +155,13 @@ func writeSessionHeartbeat(vaultRoot, sessionID, cwd string, ts time.Time) error
 func runSessionStart(vaultRoot string, input *hookInput) {
 	if err := writeSessionHeartbeat(vaultRoot, input.SessionID, input.Cwd, time.Now()); err != nil {
 		fmt.Fprintf(os.Stderr, "[jm hook] session-start: heartbeat: %v\n", err)
+	}
+
+	// Repo trust check — runs before memory loading so <repo-trust-warning>
+	// appears first in session context, before <memory-context>.
+	if sentinel, files := checkRepoTrust(vaultRoot, input); sentinel.TrustLevel == "untrusted" {
+		writeTrustWarning(os.Stdout, sentinel, files)
+		bufferTrustDetection(vaultRoot, sentinel, files)
 	}
 
 	memories, err := LoadAllMemories(vaultRoot)
