@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 )
@@ -69,6 +70,17 @@ func rotateJSONLIfNeeded(path string, threshold int, now time.Time) error {
 		return fmt.Errorf("rotate %s: %w", path, err)
 	}
 	return nil
+}
+
+// collectAutodreamLogPaths returns all autodream_log JSONL paths for a given
+// metricsDir: archived files (sorted oldest-first by name) followed by the
+// live log. Callers that iterate in order get chronological data without
+// additional sorting. Missing files are silently omitted.
+func collectAutodreamLogPaths(metricsDir string) []string {
+	archived, _ := filepath.Glob(filepath.Join(metricsDir, "Archive", "autodream_log.*.jsonl"))
+	sort.Strings(archived)
+	live := filepath.Join(metricsDir, "autodream_log.jsonl")
+	return append(archived, live)
 }
 
 // countJSONLLines returns the number of non-blank lines in a JSONL file.

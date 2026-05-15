@@ -99,6 +99,14 @@ Both triggers are **fail-soft**: a backup failure prints a warning to
 stderr but never blocks the parent flow. The local-dir copy is the
 durability floor — even if the git push fails, your data is on disk.
 
+Before writing each backup blob, `jm backup` runs a pre-backup sanity check
+(`warnIfMetricsSuspicious`) that warns to stderr if key JSONL files are
+suspiciously small (below a minimum line threshold). This catches truncation
+events before they get sealed into a backup. Files checked: `Metrics/autodream_log.jsonl`
+(floor: 10), `Metrics/consolidation_outcomes.jsonl` (floor: 5),
+`Metrics/replay_log.jsonl` (floor: 1). The check is informational — it never
+blocks the backup.
+
 To disable automation while keeping manual `jm backup` available, set
 `backup_enabled: false`. To force a backup outside the cooldown window,
 just run `jm backup` directly.

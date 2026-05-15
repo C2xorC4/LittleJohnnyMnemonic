@@ -355,7 +355,7 @@
   }
 
   // ── Resize + redraw ──────────────────────────────────────────────
-  const CANVAS_IDS = ['chart-recall', 'chart-promotes', 'chart-depth', 'chart-daydream'];
+  const CANVAS_IDS = ['chart-recall', 'chart-promotes', 'chart-depth', 'chart-daydream', 'chart-body-hits'];
 
   function resizeAll() {
     CANVAS_IDS.forEach(id => {
@@ -376,7 +376,8 @@
     drawLegend('legend-recall', allTypes);
     bindTooltip(recallCanvas, recallData, p => {
       const rows = Object.entries(p.counts || {}).map(([k, v]) => `${k}: <b>${v}</b>`).join('<br>');
-      return `<b>${p.date}</b><br>${rows}<br>prompts: <b>${p.prompts}</b>&nbsp; avg: <b>${p.avg_recall.toFixed(1)}</b>`;
+      const bodyHits = (p.avg_body_hits || 0).toFixed(2);
+      return `<b>${p.date}</b><br>${rows}<br>prompts: <b>${p.prompts}</b>&nbsp; avg: <b>${p.avg_recall.toFixed(1)}</b>&nbsp; body-hits: <b>${bodyHits}</b>`;
     });
     const metaEl = document.getElementById('meta-recall');
     if (metaEl) {
@@ -491,6 +492,21 @@
       );
       const metaEl = document.getElementById('meta-daydream');
       if (metaEl) metaEl.textContent = `${daydreamData.reduce((s, p) => s + p.count, 0)} total`;
+    }
+
+    const bodyHitsCanvas = document.getElementById('chart-body-hits');
+    if (bodyHitsCanvas) {
+      const recallData = (d.recall_by_day || []);
+      // Draw avg_body_hits as a bar chart — each bar = mean keyword hits per recalled memory that day.
+      // 0.0 means all retrievals were tag-only (no body contact); higher values indicate
+      // prompt keywords found in memory body text. Semantic framing memories score 0 regardless
+      // of actual influence — this chart captures episodic/factual activation depth only.
+      drawBarChart(bodyHitsCanvas, recallData, 'avg_body_hits', '#60a5fa');
+      bindTooltip(bodyHitsCanvas, recallData, p => {
+        const hits = (p.avg_body_hits || 0).toFixed(2);
+        const rel  = (p.avg_relevance || 0).toFixed(2);
+        return `<b>${p.date}</b><br>avg body hits: <b>${hits}</b><br>avg relevance: <b>${rel}</b><br>prompts: <b>${p.prompts}</b>`;
+      });
     }
   }
 

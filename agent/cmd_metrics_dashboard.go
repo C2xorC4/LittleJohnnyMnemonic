@@ -34,11 +34,13 @@ type dashboardPayload struct {
 }
 
 type dayRecallPoint struct {
-	Date      string         `json:"date"`
-	Total     int            `json:"total"`
-	Prompts   int            `json:"prompts"`
-	AvgRecall float64        `json:"avg_recall"`
-	Counts    map[string]int `json:"counts"`
+	Date         string         `json:"date"`
+	Total        int            `json:"total"`
+	Prompts      int            `json:"prompts"`
+	AvgRecall    float64        `json:"avg_recall"`
+	AvgBodyHits  float64        `json:"avg_body_hits"`
+	AvgRelevance float64        `json:"avg_relevance"`
+	Counts       map[string]int `json:"counts"`
 }
 
 type dayCountPoint struct {
@@ -131,7 +133,7 @@ func buildDashboardPayload(metricsDir string) (dashboardPayload, error) {
 		return p, fmt.Errorf("autodream_activation_snapshots: %w", err)
 	}
 
-	p.DaydreamByDay, err = loadDaydreamByDay(filepath.Join(metricsDir, "autodream_log.jsonl"))
+	p.DaydreamByDay, err = loadDaydreamByDay(metricsDir)
 	if err != nil {
 		return p, fmt.Errorf("autodream_log: %w", err)
 	}
@@ -151,9 +153,11 @@ func loadRecallByDay(logPath string) ([]dayRecallPoint, error) {
 	}
 
 	type accum struct {
-		total   int
-		prompts int
-		counts  map[string]int
+		total            int
+		prompts          int
+		counts           map[string]int
+		weightedBodyHits float64 // sum of (AvgBodyHits * Total) for weighted mean
+		weightedRel      float64 // sum of (AvgRelevance * Total) for weighted mean
 	}
 	byDay := map[string]*accum{}
 
@@ -181,6 +185,8 @@ func loadRecallByDay(logPath string) ([]dayRecallPoint, error) {
 			acc := getDay(d.Date)
 			acc.total += d.TotalRecalls
 			acc.prompts += d.Prompts
+			acc.weightedBodyHits += d.AvgBodyHits * float64(d.TotalRecalls)
+			acc.weightedRel += d.AvgRelevance * float64(d.TotalRecalls)
 			for k, v := range d.Counts {
 				acc.counts[k] += v
 			}
@@ -196,6 +202,8 @@ func loadRecallByDay(logPath string) ([]dayRecallPoint, error) {
 			acc := getDay(t.UTC().Format("2006-01-02"))
 			acc.total += g.Total
 			acc.prompts++
+			acc.weightedBodyHits += g.AvgBodyHits * float64(g.Total)
+			acc.weightedRel += g.AvgRelevance * float64(g.Total)
 			for k, v := range g.Counts {
 				acc.counts[k] += v
 			}
@@ -206,16 +214,22 @@ func loadRecallByDay(logPath string) ([]dayRecallPoint, error) {
 	result := make([]dayRecallPoint, len(dates))
 	for i, d := range dates {
 		acc := byDay[d]
-		avg := 0.0
+		avgRecall, avgBodyHits, avgRelevance := 0.0, 0.0, 0.0
 		if acc.prompts > 0 {
-			avg = float64(acc.total) / float64(acc.prompts)
+			avgRecall = float64(acc.total) / float64(acc.prompts)
+		}
+		if acc.total > 0 {
+			avgBodyHits = acc.weightedBodyHits / float64(acc.total)
+			avgRelevance = acc.weightedRel / float64(acc.total)
 		}
 		result[i] = dayRecallPoint{
-			Date:      d,
-			Total:     acc.total,
-			Prompts:   acc.prompts,
-			AvgRecall: avg,
-			Counts:    acc.counts,
+			Date:         d,
+			Total:        acc.total,
+			Prompts:      acc.prompts,
+			AvgRecall:    avgRecall,
+			AvgBodyHits:  avgBodyHits,
+			AvgRelevance: avgRelevance,
+			Counts:       acc.counts,
 		}
 	}
 	return result, nil
@@ -314,41 +328,43 @@ func loadVaultDepth(logPath string) ([]vaultDepthPoint, error) {
 	return result, nil
 }
 
-// loadDaydreamByDay counts daydream firing events per day from autodream_log.jsonl.
-// Dry-run entries are excluded; only real fires count.
-func loadDaydreamByDay(logPath string) ([]dayCountPoint, error) {
-	data, err := os.ReadFile(logPath)
-	if os.IsNotExist(err) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-
+// loadDaydreamByDay counts daydream firing events per day from all
+// autodream_log JSONL files in metricsDir (live + Archive/*.jsonl).
+// Dry-run and skip entries are excluded; only real fires count.
+func loadDaydreamByDay(metricsDir string) ([]dayCountPoint, error) {
 	byDay := map[string]int{}
 
-	for _, line := range strings.Split(strings.TrimSpace(string(data)), "\n") {
-		if line == "" {
+	for _, path := range collectAutodreamLogPaths(metricsDir) {
+		data, err := os.ReadFile(path)
+		if os.IsNotExist(err) {
 			continue
 		}
-		var entry struct {
-			Timestamp string `json:"timestamp"`
-			Decision  string `json:"decision"`
-		}
-		if json.Unmarshal([]byte(line), &entry) != nil || entry.Timestamp == "" {
-			continue
-		}
-		if strings.Contains(entry.Decision, "dry-run") || strings.Contains(entry.Decision, "skip") {
-			continue
-		}
-		t, err := time.Parse(time.RFC3339, entry.Timestamp)
 		if err != nil {
-			t, err = time.Parse("2006-01-02T15:04:05.9999999-07:00", entry.Timestamp)
-			if err != nil {
+			return nil, err
+		}
+		for _, line := range strings.Split(strings.TrimSpace(string(data)), "\n") {
+			if line == "" {
 				continue
 			}
+			var entry struct {
+				Timestamp string `json:"timestamp"`
+				Decision  string `json:"decision"`
+			}
+			if json.Unmarshal([]byte(line), &entry) != nil || entry.Timestamp == "" {
+				continue
+			}
+			if strings.Contains(entry.Decision, "dry-run") || strings.Contains(entry.Decision, "skip") {
+				continue
+			}
+			t, err := time.Parse(time.RFC3339, entry.Timestamp)
+			if err != nil {
+				t, err = time.Parse("2006-01-02T15:04:05.9999999-07:00", entry.Timestamp)
+				if err != nil {
+					continue
+				}
+			}
+			byDay[t.UTC().Format("2006-01-02")]++
 		}
-		byDay[t.UTC().Format("2006-01-02")]++
 	}
 
 	return dayCountSlice(byDay), nil

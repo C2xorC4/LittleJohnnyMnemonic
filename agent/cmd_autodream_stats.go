@@ -116,7 +116,12 @@ func AggregateAutodreamStats(vaultRoot string, windowDays int, now time.Time) Au
 		report.WindowStart = now.Add(-time.Duration(windowDays) * 24 * time.Hour)
 	}
 
-	logEntries, _ := loadAutodreamLogJSONL(filepath.Join(vaultRoot, "Metrics", "autodream_log.jsonl"))
+	metricsDir := filepath.Join(vaultRoot, "Metrics")
+	var logEntries []AutodreamLogEntry
+	for _, p := range collectAutodreamLogPaths(metricsDir) {
+		entries, _ := loadAutodreamLogJSONL(p)
+		logEntries = append(logEntries, entries...)
+	}
 	logEntries = filterByWindow(logEntries, report.WindowStart)
 	report.Activity = aggregateActivity(logEntries)
 	report.Strategy = aggregateStrategy(logEntries)

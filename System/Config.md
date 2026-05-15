@@ -356,10 +356,17 @@ density_cluster_min_tags: 3         # minimum shared tag count for cluster detec
 Per-prompt memory retrieval metrics. Feeds `Metrics/recall_log.jsonl` for
 time-series analysis (recall frequency by category vs vault depth over time).
 
+Each granular entry records:
+- `total`, `counts` (by memory type), `prompt_chars` — always present
+- `avg_body_hits` — mean number of prompt-keyword hits in the body text across all retrieved memories. Zero means tag-only match (no body-level contact). A partial proxy for content-level influence: episodic and factual memories activate via keyword contact; semantic framing memories may influence through framing with zero body hits.
+- `avg_relevance` — mean combined relevance score across all retrieved memories
+- `slugs` (verbose only) — slug list for all retrieved memories
+- `body_hit_counts` (verbose only) — `{slug: count}` for memories with at least one body hit
+
 ```yaml
 recall_tracking_enabled: true
 
-# verbosity: summary (counts by type) | verbose (counts + memory slugs)
+# verbosity: summary (counts by type) | verbose (counts + memory slugs + body_hit_counts)
 recall_tracking_verbosity: summary
 
 recall_tracking_log_path: Metrics/recall_log.jsonl

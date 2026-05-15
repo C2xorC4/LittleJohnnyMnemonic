@@ -15,13 +15,26 @@ import (
 // recallLogEntry is one JSONL record appended to Metrics/recall_log.jsonl.
 // Designed for time-series analysis: recall frequency by category over time,
 // cross-referenced against vault depth from the consolidation log.
+//
+// AvgBodyHits is the mean number of prompt-keyword hits in the body text
+// across all retrieved memories. A memory with zero body hits matched on tags
+// only — it crossed the retrieval threshold but had no textual contact with
+// the prompt. This is a partial proxy for content-level influence: it captures
+// episodic and factual activation well, but is blind to semantic memories
+// that shape responses through framing rather than keyword co-occurrence.
+// Low AvgBodyHits on a high-Total recall suggests broad taxonomic loading
+// with thin content-level contact. High AvgBodyHits suggests prompt terms
+// are finding body-level matches across the loaded set.
 type recallLogEntry struct {
-	Timestamp string         `json:"timestamp"`
-	SessionID string         `json:"session_id"`
-	PromptLen int            `json:"prompt_chars"`
-	Total     int            `json:"total"`
-	Counts    map[string]int `json:"counts"`
-	Slugs     []string       `json:"slugs,omitempty"` // only in verbose mode
+	Timestamp     string         `json:"timestamp"`
+	SessionID     string         `json:"session_id"`
+	PromptLen     int            `json:"prompt_chars"`
+	Total         int            `json:"total"`
+	Counts        map[string]int `json:"counts"`
+	Slugs         []string       `json:"slugs,omitempty"`          // verbose only
+	BodyHitCounts map[string]int `json:"body_hit_counts,omitempty"` // verbose only: slug → body hit count
+	AvgBodyHits   float64        `json:"avg_body_hits"`             // mean body keyword hits per recalled memory
+	AvgRelevance  float64        `json:"avg_relevance"`             // mean combined relevance score per recalled memory
 }
 
 // recallDayEntry is a compressed daily aggregate that replaces per-prompt
@@ -33,6 +46,8 @@ type recallDayEntry struct {
 	TotalRecalls int            `json:"total_recalls"`
 	AvgTotal     float64        `json:"avg_total"`
 	Counts       map[string]int `json:"counts"`
+	AvgBodyHits  float64        `json:"avg_body_hits"`  // weighted mean across all recalled memories that day
+	AvgRelevance float64        `json:"avg_relevance"`  // weighted mean relevance across all recalled memories that day
 }
 
 // writeRecallMetrics is called before writePromptAssociationContext in
@@ -154,22 +169,32 @@ func compactRecallLog(logPath string, windowDays int, dryRun bool) (int, error) 
 func aggregateDayEntry(date string, entries []recallLogEntry) recallDayEntry {
 	counts := map[string]int{}
 	totalRecalls := 0
+	weightedBodyHits := 0.0
+	weightedRelevance := 0.0
 	for _, e := range entries {
 		totalRecalls += e.Total
+		weightedBodyHits += e.AvgBodyHits * float64(e.Total)
+		weightedRelevance += e.AvgRelevance * float64(e.Total)
 		for k, v := range e.Counts {
 			counts[k] += v
 		}
 	}
-	avg := 0.0
+	avgTotal, avgBodyHits, avgRelevance := 0.0, 0.0, 0.0
 	if len(entries) > 0 {
-		avg = float64(totalRecalls) / float64(len(entries))
+		avgTotal = float64(totalRecalls) / float64(len(entries))
+	}
+	if totalRecalls > 0 {
+		avgBodyHits = weightedBodyHits / float64(totalRecalls)
+		avgRelevance = weightedRelevance / float64(totalRecalls)
 	}
 	return recallDayEntry{
 		Date:         date,
 		Granularity:  "day",
 		Prompts:      len(entries),
 		TotalRecalls: totalRecalls,
-		AvgTotal:     avg,
+		AvgTotal:     avgTotal,
+		AvgBodyHits:  avgBodyHits,
+		AvgRelevance: avgRelevance,
 		Counts:       counts,
 	}
 }
@@ -187,16 +212,22 @@ func mergeDayEntries(a, b recallDayEntry) recallDayEntry {
 	}
 	prompts := a.Prompts + b.Prompts
 	total := a.TotalRecalls + b.TotalRecalls
-	avg := 0.0
+	avgTotal, avgBodyHits, avgRelevance := 0.0, 0.0, 0.0
 	if prompts > 0 {
-		avg = float64(total) / float64(prompts)
+		avgTotal = float64(total) / float64(prompts)
+	}
+	if total > 0 {
+		avgBodyHits = (a.AvgBodyHits*float64(a.TotalRecalls) + b.AvgBodyHits*float64(b.TotalRecalls)) / float64(total)
+		avgRelevance = (a.AvgRelevance*float64(a.TotalRecalls) + b.AvgRelevance*float64(b.TotalRecalls)) / float64(total)
 	}
 	return recallDayEntry{
 		Date:         a.Date,
 		Granularity:  "day",
 		Prompts:      prompts,
 		TotalRecalls: total,
-		AvgTotal:     avg,
+		AvgTotal:     avgTotal,
+		AvgBodyHits:  avgBodyHits,
+		AvgRelevance: avgRelevance,
 		Counts:       counts,
 	}
 }
@@ -240,20 +271,44 @@ func formatRecallLine(w io.Writer, results []AssociatedMemory, verbosity string)
 func buildRecallLogEntry(results []AssociatedMemory, sessionID string, promptLen int, verbosity string) recallLogEntry {
 	counts := make(map[string]int)
 	var slugs []string
+	var bodyHitCounts map[string]int
+	if verbosity == "verbose" {
+		bodyHitCounts = map[string]int{}
+	}
+
+	totalBodyHits := 0
+	totalRelevance := 0.0
 	for _, r := range results {
 		counts[string(r.Memory.Type)]++
+		hits := len(r.BodyKeywordHits)
+		totalBodyHits += hits
+		totalRelevance += r.Relevance
 		if verbosity == "verbose" {
 			base := filepath.Base(r.Memory.FileName)
-			slugs = append(slugs, strings.TrimSuffix(base, ".md"))
+			slug := strings.TrimSuffix(base, ".md")
+			slugs = append(slugs, slug)
+			if hits > 0 {
+				bodyHitCounts[slug] = hits
+			}
 		}
 	}
+
+	avgBodyHits, avgRelevance := 0.0, 0.0
+	if len(results) > 0 {
+		avgBodyHits = float64(totalBodyHits) / float64(len(results))
+		avgRelevance = totalRelevance / float64(len(results))
+	}
+
 	return recallLogEntry{
-		Timestamp: time.Now().UTC().Format(time.RFC3339),
-		SessionID: sessionID,
-		PromptLen: promptLen,
-		Total:     len(results),
-		Counts:    counts,
-		Slugs:     slugs,
+		Timestamp:     time.Now().UTC().Format(time.RFC3339),
+		SessionID:     sessionID,
+		PromptLen:     promptLen,
+		Total:         len(results),
+		Counts:        counts,
+		Slugs:         slugs,
+		BodyHitCounts: bodyHitCounts,
+		AvgBodyHits:   avgBodyHits,
+		AvgRelevance:  avgRelevance,
 	}
 }
 

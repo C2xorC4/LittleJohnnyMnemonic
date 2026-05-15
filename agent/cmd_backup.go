@@ -142,6 +142,8 @@ func RunBackup(cfg Config, vaultRoot string, opts BackupOpts) (BackupResult, err
 		return res, nil
 	}
 
+	warnIfMetricsSuspicious(vaultRoot)
+
 	target := opts.LocalOverride
 	if target == "" {
 		target = resolveBackupLocalTargetDir(cfg, vaultRoot)
@@ -350,6 +352,44 @@ func copyFile(src, dst string) error {
 	defer out.Close()
 	_, err = io.Copy(out, in)
 	return err
+}
+
+// warnIfMetricsSuspicious checks high-value Metrics JSONL files for
+// suspiciously low line counts before each backup. It never fails the backup —
+// warnings go to stderr so the user can see them in the hook output.
+//
+// The thresholds are intentionally low: they exist to catch zero-byte or
+// near-zero-byte files caused by accidental truncation, not to validate
+// normal operational variance (e.g. recall_log only started 2026-05-14).
+func warnIfMetricsSuspicious(vaultRoot string) {
+	type check struct {
+		rel   string // path relative to vaultRoot
+		floor int    // warn if line count is below this
+	}
+	checks := []check{
+		{"Metrics/autodream_log.jsonl", 10},
+		{"Metrics/consolidation_outcomes.jsonl", 5},
+		{"Metrics/replay_log.jsonl", 1},
+	}
+	for _, c := range checks {
+		full := filepath.Join(vaultRoot, filepath.FromSlash(c.rel))
+		data, err := os.ReadFile(full)
+		if err != nil {
+			// File absent is fine — it may not exist yet.
+			continue
+		}
+		lines := 0
+		for _, b := range data {
+			if b == '\n' {
+				lines++
+			}
+		}
+		if lines < c.floor {
+			fmt.Fprintf(os.Stderr,
+				"[backup:warn] %s has only %d line(s) — possible truncation (expected ≥%d)\n",
+				c.rel, lines, c.floor)
+		}
+	}
 }
 
 // recordLastBackup writes Metrics/last_backup.json with the most recent
