@@ -114,10 +114,13 @@ unlinked; 58% haven't been accessed in over 30 days. Consolidation adds
 entries faster than it connects them. Whether the stale ratio reflects
 correct selectivity or an echo chamber forming is still an open question.
 
-**Shipped infrastructure that isn't activated.** Auto-daydream sat behind
-a flag after shipping. Adaptive edges just went live in May 15. Caution
-before enabling feedback loops in a system's own retrieval is correct, but
-the pattern of building faster than activating keeps recurring.
+**Activation follows a deployment gate, not momentum.** Code ships when
+it's done; activation happens only after sync, backup, and recovery paths
+are confirmed. Auto-daydream sat behind a flag; adaptive edges followed the
+same pattern. This is deliberate — features that touch retrieval behavior
+can degrade outputs in ways that aren't visible mid-session, and a crash
+during sync is a bad time to discover the gap. The gap between "built" and
+"running" is the gate working correctly, not a deficiency.
 
 ---
 
@@ -125,9 +128,14 @@ the pattern of building faster than activating keeps recurring.
 
 Open questions across assessments. Closed when there's evidence.
 
-1. **Does loaded memory actually change high-stakes decisions?** The April
-   29 auto-push is the test case. No equivalent situation has recurred since.
-   The prediction is still waiting for its natural experiment.
+1. ~~**Does loaded memory actually change high-stakes decisions?**~~ **Closed
+   (2026-05-15, affirmative).** The April 29 auto-push was the test case.
+   Since then, across multiple sessions, git work has followed a consistent
+   corrected pattern: `git add`, `git commit`, stop — no push. The single
+   exception in this period was a push requested through the tool-use approval
+   flow (explicit authorization, not automatic), and it is the only push
+   request made since the incident. The natural experiment ran; the result is
+   that loaded memory is shaping boundary behavior across sessions.
 
 2. **Is the hot-set retrieval pattern signal or pathology?** 58% stale
    either means the system is correctly focused on the most relevant

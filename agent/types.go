@@ -134,6 +134,7 @@ type Config struct {
 	BufferThreshold                  int    `yaml:"buffer_threshold"`
 	ConsolidationDepth               string `yaml:"consolidation_depth"`
 	MaxHolds                         int    `yaml:"max_holds"`
+	AutoConsolidationEnabled         bool   `yaml:"auto_consolidation_enabled"`
 	AutoConsolidationCooldownMinutes int    `yaml:"auto_consolidation_cooldown_minutes"`
 
 	// Context integrity
@@ -279,6 +280,7 @@ func DefaultConfig() Config {
 		BufferThreshold:                  10,
 		ConsolidationDepth:               "standard",
 		MaxHolds:                         2,
+		AutoConsolidationEnabled:         true,
 		AutoConsolidationCooldownMinutes: 30,
 
 		ContextPenaltyPartial:   0.7,

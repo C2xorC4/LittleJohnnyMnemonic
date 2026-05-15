@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -156,5 +157,196 @@ func TestWriteSessionHeartbeat_SuppressedOnlyForExactValue(t *testing.T) {
 	path := filepath.Join(vault, "Metrics", "session_heartbeat.jsonl")
 	if _, err := os.Stat(path); err != nil {
 		t.Errorf("heartbeat file should exist when env var is not exactly '1'; got stat err %v", err)
+	}
+}
+
+// bufferEntry is a minimal valid buffer file body for use in consolidation gate tests.
+const minimalBufferEntry = `---
+type: buffer
+timestamp: 2026-01-01T00:00:00Z
+source: conversation
+surprise: 0.5
+tags: [test]
+---
+test body`
+
+// writeBufferEntries populates vault/Buffer with n synthetic entries.
+func writeBufferEntries(t *testing.T, vault string, n int) {
+	t.Helper()
+	dir := filepath.Join(vault, "Buffer")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for i := range n {
+		name := fmt.Sprintf("2026-01-01_test-%02d.md", i)
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(minimalBufferEntry), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+// TestSpawnConsolidationIfNeeded_KillSwitchDisables verifies that setting
+// AutoConsolidationEnabled=false prevents consolidation from firing even when
+// the buffer is above threshold and no cooldown applies.
+func TestSpawnConsolidationIfNeeded_KillSwitchDisables(t *testing.T) {
+	vault := t.TempDir()
+	writeBufferEntries(t, vault, 5)
+
+	cfg := DefaultConfig()
+	cfg.BufferThreshold = 1
+	cfg.AutoConsolidationEnabled = false
+	cfg.AutoConsolidationCooldownMinutes = 0
+
+	spawnConsolidationIfNeeded(vault, cfg)
+
+	triggerPath := filepath.Join(vault, "Metrics", "auto_consolidation_trigger.json")
+	if _, err := os.Stat(triggerPath); !os.IsNotExist(err) {
+		t.Error("trigger file should NOT exist when kill switch is false")
+	}
+}
+
+// TestSpawnConsolidationIfNeeded_KillSwitchWithSuspension verifies that when
+// the kill switch is false AND a suspension record exists, the reminder message
+// path is exercised without panicking (smoke test — we can't capture stderr
+// without refactoring, so we just verify no trigger file is written).
+func TestSpawnConsolidationIfNeeded_KillSwitchWithSuspension(t *testing.T) {
+	vault := t.TempDir()
+	writeBufferEntries(t, vault, 5)
+	writeAutoConsolidationSuspended(vault, "both-sentinels-missing", time.Now())
+
+	cfg := DefaultConfig()
+	cfg.BufferThreshold = 1
+	cfg.AutoConsolidationEnabled = false
+	cfg.AutoConsolidationCooldownMinutes = 0
+
+	spawnConsolidationIfNeeded(vault, cfg)
+
+	triggerPath := filepath.Join(vault, "Metrics", "auto_consolidation_trigger.json")
+	if _, err := os.Stat(triggerPath); !os.IsNotExist(err) {
+		t.Error("trigger file should NOT exist when kill switch is false")
+	}
+}
+
+// TestSpawnConsolidationIfNeeded_SuspensionFileBlocks verifies that an existing
+// suspension record prevents consolidation and does not overwrite itself.
+func TestSpawnConsolidationIfNeeded_SuspensionFileBlocks(t *testing.T) {
+	vault := t.TempDir()
+	writeBufferEntries(t, vault, 5)
+
+	suspendedAt := time.Now().Add(-1 * time.Hour).UTC().Truncate(time.Second)
+	writeAutoConsolidationSuspended(vault, "both-sentinels-missing", suspendedAt)
+
+	// Give it a recent backup so the both-missing guard does not re-fire.
+	recordLastBackup(vault, time.Now())
+
+	cfg := DefaultConfig()
+	cfg.BufferThreshold = 1
+	cfg.AutoConsolidationEnabled = true
+	cfg.AutoConsolidationCooldownMinutes = 0
+
+	spawnConsolidationIfNeeded(vault, cfg)
+
+	triggerPath := filepath.Join(vault, "Metrics", "auto_consolidation_trigger.json")
+	if _, err := os.Stat(triggerPath); !os.IsNotExist(err) {
+		t.Error("trigger file should NOT exist when suspension record is present")
+	}
+
+	// Suspension record should be unchanged.
+	suspended, reason, since := readAutoConsolidationSuspended(vault)
+	if !suspended {
+		t.Fatal("suspension record should still be present")
+	}
+	if reason != "both-sentinels-missing" {
+		t.Errorf("reason changed: got %q", reason)
+	}
+	if !since.Equal(suspendedAt) {
+		t.Errorf("suspended_at changed: got %v, want %v", since, suspendedAt)
+	}
+}
+
+// TestSpawnConsolidationIfNeeded_BothMissingWritesSuspension verifies that when
+// both sentinels are absent, the both-missing guard writes the suspension record
+// and does not fire consolidation.
+func TestSpawnConsolidationIfNeeded_BothMissingWritesSuspension(t *testing.T) {
+	vault := t.TempDir()
+	writeBufferEntries(t, vault, 5)
+
+	cfg := DefaultConfig()
+	cfg.BufferThreshold = 1
+	cfg.AutoConsolidationEnabled = true
+	cfg.AutoConsolidationCooldownMinutes = 0
+
+	// Both sentinel files are absent — neither trigger nor backup has ever run.
+	spawnConsolidationIfNeeded(vault, cfg)
+
+	triggerPath := filepath.Join(vault, "Metrics", "auto_consolidation_trigger.json")
+	if _, err := os.Stat(triggerPath); !os.IsNotExist(err) {
+		t.Error("trigger file should NOT be written when both-missing guard fires")
+	}
+
+	suspended, reason, since := readAutoConsolidationSuspended(vault)
+	if !suspended {
+		t.Fatal("suspension record should have been written by both-missing guard")
+	}
+	if reason != "both-sentinels-missing" {
+		t.Errorf("unexpected reason: %q", reason)
+	}
+	if since.IsZero() {
+		t.Error("suspended_at should not be zero")
+	}
+}
+
+// TestSpawnConsolidationIfNeeded_DeleteSuspensionReenables verifies that
+// removing the suspension file allows consolidation to proceed normally.
+func TestSpawnConsolidationIfNeeded_DeleteSuspensionReenables(t *testing.T) {
+	vault := t.TempDir()
+	writeBufferEntries(t, vault, 5)
+
+	// Seed both sentinels so the both-missing guard doesn't re-fire.
+	recordAutoConsolidationTrigger(vault, time.Now().Add(-2*time.Hour))
+	recordLastBackup(vault, time.Now().Add(-1*time.Hour))
+
+	// Write then delete the suspension record — simulates user re-enable.
+	writeAutoConsolidationSuspended(vault, "both-sentinels-missing", time.Now().Add(-30*time.Minute))
+	if err := os.Remove(autoConsolidationSuspendedPath(vault)); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := DefaultConfig()
+	cfg.BufferThreshold = 1
+	cfg.AutoConsolidationEnabled = true
+	cfg.AutoConsolidationCooldownMinutes = 0
+
+	spawnConsolidationIfNeeded(vault, cfg)
+
+	// The trigger timestamp should be updated (consolidation was allowed to proceed).
+	got := readLastAutoConsolidationTrigger(vault)
+	if got.Before(time.Now().Add(-5 * time.Second)) {
+		t.Errorf("trigger timestamp not updated after re-enable: %v", got)
+	}
+}
+
+// TestWriteAndReadAutoConsolidationSuspended verifies round-trip of the
+// suspension sentinel.
+func TestWriteAndReadAutoConsolidationSuspended(t *testing.T) {
+	vault := t.TempDir()
+
+	suspended, _, _ := readAutoConsolidationSuspended(vault)
+	if suspended {
+		t.Error("expected no suspension before any write")
+	}
+
+	now := time.Now().UTC().Truncate(time.Second)
+	writeAutoConsolidationSuspended(vault, "test-reason", now)
+
+	suspended, reason, since := readAutoConsolidationSuspended(vault)
+	if !suspended {
+		t.Fatal("expected suspended=true after write")
+	}
+	if reason != "test-reason" {
+		t.Errorf("reason: got %q, want %q", reason, "test-reason")
+	}
+	if !since.Equal(now) {
+		t.Errorf("since: got %v, want %v", since, now)
 	}
 }

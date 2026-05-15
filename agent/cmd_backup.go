@@ -402,7 +402,7 @@ func recordLastBackup(vaultRoot string, t time.Time) {
 	if err != nil {
 		return
 	}
-	_ = os.WriteFile(path, data, 0o644)
+	writeAtomic(path, data, 0o644)
 }
 
 // readLastBackup returns the timestamp of the most recent successful backup,

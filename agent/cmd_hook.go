@@ -323,20 +323,65 @@ func surfaceFreshDaydreamsToHook(vaultRoot, prompt, sessionID string, now time.T
 }
 
 // spawnConsolidationIfNeeded fires a detached `jm consolidate --trigger hook`
-// when the buffer is at or above threshold and the cooldown has elapsed.
+// when the buffer is at or above threshold and all safety gates pass.
 // Designed to be called from session-start and stop hooks. Never blocks hook
 // flow — all errors are logged to stderr and ignored.
+//
+// Gate order:
+//  1. Buffer below threshold → silent return.
+//  2. User kill switch (AutoConsolidationEnabled=false) → return; emit reminder
+//     if a system suspension record also exists (failure condition unresolved).
+//  3. System suspension (auto_consolidation_suspended.json) → emit reminder + return.
+//  4. Both-sentinels-missing guard → write suspension record, emit warning, return.
+//  5. Cooldown window → silent return.
+//  6. Fire.
 func spawnConsolidationIfNeeded(vaultRoot string, cfg Config) {
 	entries, err := LoadAllBufferEntries(vaultRoot)
 	if err != nil || len(entries) < cfg.BufferThreshold {
 		return
 	}
+	n := len(entries)
 
-	cooldown := time.Duration(cfg.AutoConsolidationCooldownMinutes) * time.Minute
-	if cooldown > 0 {
-		if last := readLastAutoConsolidationTrigger(vaultRoot); !last.IsZero() && time.Since(last) < cooldown {
-			return
+	// Gate 2: user kill switch.
+	if !cfg.AutoConsolidationEnabled {
+		if suspended, reason, since := readAutoConsolidationSuspended(vaultRoot); suspended {
+			fmt.Fprintf(os.Stderr,
+				"[jm hook] auto-consolidation disabled — %d buffer entries waiting. "+
+					"Suspension record present (reason: %s, since: %s). "+
+					"Resolve failure conditions, then delete Metrics/auto_consolidation_suspended.json "+
+					"and re-enable auto_consolidation_enabled in System/Config.md.\n",
+				n, reason, since.Format(time.RFC3339))
 		}
+		return
+	}
+
+	// Gate 3: system suspension from a prior failure detection.
+	if suspended, reason, since := readAutoConsolidationSuspended(vaultRoot); suspended {
+		fmt.Fprintf(os.Stderr,
+			"[jm hook] auto-consolidation suspended (reason: %s, since: %s) — "+
+				"%d buffer entries waiting. "+
+				"Resolve failure conditions, then delete Metrics/auto_consolidation_suspended.json to re-enable.\n",
+			reason, since.Format(time.RFC3339), n)
+		return
+	}
+
+	// Gate 4: both-sentinels-missing guard.
+	lastTrigger := readLastAutoConsolidationTrigger(vaultRoot)
+	lastBackup := readLastBackup(vaultRoot)
+	if lastTrigger.IsZero() && lastBackup.IsZero() {
+		fmt.Fprintf(os.Stderr,
+			"[jm hook] WARN: auto_consolidation_trigger.json and last_backup.json are both missing or corrupt. "+
+				"Possible interrupted sync — auto-consolidation suspended to prevent consolidation against unknown vault state. "+
+				"%d buffer entries are waiting. "+
+				"Verify vault integrity, then delete Metrics/auto_consolidation_suspended.json to re-enable.\n", n)
+		writeAutoConsolidationSuspended(vaultRoot, "both-sentinels-missing", time.Now())
+		return
+	}
+
+	// Gate 5: cooldown.
+	cooldown := time.Duration(cfg.AutoConsolidationCooldownMinutes) * time.Minute
+	if cooldown > 0 && !lastTrigger.IsZero() && time.Since(lastTrigger) < cooldown {
+		return
 	}
 
 	recordAutoConsolidationTrigger(vaultRoot, time.Now())
@@ -367,7 +412,54 @@ func recordAutoConsolidationTrigger(vaultRoot string, t time.Time) {
 	_ = os.MkdirAll(filepath.Dir(path), 0o755)
 	payload := map[string]any{"triggered_utc": t.UTC().Format(time.RFC3339)}
 	data, _ := json.MarshalIndent(payload, "", "  ")
-	_ = os.WriteFile(path, data, 0o644)
+	writeAtomic(path, data, 0o644)
+}
+
+// autoConsolidationSuspendedPath returns the path of the system suspension sentinel.
+func autoConsolidationSuspendedPath(vaultRoot string) string {
+	return filepath.Join(vaultRoot, "Metrics", "auto_consolidation_suspended.json")
+}
+
+// writeAutoConsolidationSuspended records a system-detected failure that has
+// caused auto-consolidation to be suspended. The file persists until the user
+// manually deletes it after resolving the failure condition.
+func writeAutoConsolidationSuspended(vaultRoot, reason string, t time.Time) {
+	path := autoConsolidationSuspendedPath(vaultRoot)
+	_ = os.MkdirAll(filepath.Dir(path), 0o755)
+	payload := map[string]any{
+		"reason":       reason,
+		"suspended_at": t.UTC().Format(time.RFC3339),
+	}
+	data, _ := json.MarshalIndent(payload, "", "  ")
+	writeAtomic(path, data, 0o644)
+}
+
+// readAutoConsolidationSuspended reports whether a system suspension record
+// exists and returns the reason and timestamp if so.
+func readAutoConsolidationSuspended(vaultRoot string) (suspended bool, reason string, since time.Time) {
+	data, err := os.ReadFile(autoConsolidationSuspendedPath(vaultRoot))
+	if err != nil {
+		return false, "", time.Time{}
+	}
+	var payload struct {
+		Reason      string `json:"reason"`
+		SuspendedAt string `json:"suspended_at"`
+	}
+	if err := json.Unmarshal(data, &payload); err != nil {
+		return true, "unknown (corrupt suspension record)", time.Time{}
+	}
+	t, _ := time.Parse(time.RFC3339, payload.SuspendedAt)
+	return true, payload.Reason, t
+}
+
+// writeAtomic writes data to path via a temp-file + rename so that a crash
+// mid-write cannot leave path in a corrupt partial state.
+func writeAtomic(path string, data []byte, perm os.FileMode) {
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, data, perm); err != nil {
+		return
+	}
+	_ = os.Rename(tmp, path)
 }
 
 func readLastAutoConsolidationTrigger(vaultRoot string) time.Time {
