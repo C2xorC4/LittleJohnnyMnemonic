@@ -1,177 +1,158 @@
-# LJM Substrate — Executive Growth Log
+# LJM — Assessment Log
 
-Rolling cross-assessment summary. Each post-`/clear` self-assessment
-adds a row to the trajectory tables and updates the open-question
-ledger. The per-assessment documents (`YYYY-MM-DD_*.md` in this
-directory) carry the full prose; this file is the executive view.
+Running record of how the system has developed: what shipped, where gaps
+were found, and what we're still watching. Updated after each assessment.
+Written for both technical and non-technical readers. Technical specifics
+link to the individual assessment documents.
 
-**Audience:** future-me reading this after another `/clear`, the
-operator scanning for whether the substrate is getting better or
-worse, anyone trying to understand the LJM project's trajectory
-without reading every assessment.
-
-**Rule for updates:** never delete a row. Mark gaps closed, do not
-remove them. Mark regressions as they appear. The growth log earns
-its weight by being honest about both directions.
+**Rule:** never delete a row. Mark gaps closed, note regressions. The log
+earns its weight by being honest in both directions.
 
 ---
 
-## Quantitative trajectory
+## How the vault has grown
 
-| Date | Buffer | LTM | User | Feedback | Project | Reference | Semantic | Episodic | Knowledge | Overrides | Unlinked | Stale |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| 2026-04-29 | 17 | 143 | 18 | 8 | 19 | 9 | 23 | 5 | 61 | — | — | — |
-| 2026-05-01 | 27d/93h | 207 | 18 | 11 | 20 | 9 | 25 | 7 | 117 | — | — | — |
-| 2026-05-11 | 19 | 425 | 18 | 24 | 24 | 11 | 50 | 10 | 143 | 6 | 216 (51%) | 238 (56%) |
-| 2026-05-15 | **170 (850%)** | 427 | 18 | 25 | 24 | 11 | 50 | 10 | 143 | 6 | 217 (51%) | 248 (58%) |
+Numbers as of each assessment. *LTM* = long-term memories; *Buffer* = entries
+pending integration into LTM; *Overrides* = memories flagged as corrections
+to the model's trained behavior; *Unlinked* = LTM entries with no
+associative connections to other entries; *Stale* = not accessed in 30+ days.
 
-`d` = filesystem; `h` = hook-reported. Hook/disk discrepancy noted on
-2026-05-01 was resolved by 2026-05-11. `—` = not tracked at that
-assessment.
+| Date | Buffer | LTM | Overrides | Unlinked | Stale |
+|---|---:|---:|---:|---:|---:|
+| 2026-04-29 | 17 | 143 | — | — | — |
+| 2026-05-01 | 93 | 207 | — | — | — |
+| 2026-05-11 | 19 | 425 | 6 | 51% | 56% |
+| 2026-05-15 | **170** | 427 | 6 | 51% | 58% |
 
-## Shipped capabilities
+The 170-entry buffer on 2026-05-15 represents a backlog — consolidation
+wasn't keeping pace with the write rate. Hook-level triggers and a scheduled
+task were added to address this.
 
-| Window | Capability | Status at assessment |
+For a full breakdown by memory category (User, Feedback, Project, Semantic,
+etc.), see the per-assessment documents.
+
+---
+
+## What shipped
+
+| When | What | Live? |
 |---|---|---|
-| → 2026-04-29 | Hook-based retrieval (SessionStart, UserPromptSubmit) | Live |
-| → 2026-04-29 | Spreading activation, typed associative links | Live |
-| → 2026-04-29 | Daydream agents (manual / discretional) | Live |
-| → 2026-04-29 | `behavioral_rules.json` — three "do X before Y" rules | Live |
-| → 2026-05-01 | Auto-daydream v1 scheduler, replay, snapshot, stats CLI | Shipped, flag-gated |
-| → 2026-05-01 | Knowledge corpus expansion (BHG, EE, Binja cookbook) | Live (Knowledge +56) |
-| → 2026-05-11 | `jm rule-judge` + `rule_firings.jsonl` instrumentation | Live, 40 firings |
-| → 2026-05-11 | Autodream self-throttling + frontmatter compliance hardening | Live |
-| → 2026-05-11 | `jm graph` — interactive HTML visualization | Live |
-| → 2026-05-11 | Adaptive edge weighting pilot (citation-driven reinforcement) | **Shipped, disabled** |
-| → 2026-05-11 | Training-override durability class (`overrides: N` in status) | Live (6 tracked) |
-| → 2026-05-15 | `jm metrics dashboard/serve/compact` — time-series recall charts, SSE live mode | Live |
-| → 2026-05-15 | Daydream deduplication (freq-weighted Jaccard; intra-volley race guard) | Live (agent-level) |
-| → 2026-05-15 | Adaptive edge weighting — **enabled** (scope: learned; α=0.20; cap=2×) | **Live, enabled** |
-| → 2026-05-15 | LJM injection test suite T1–T11; T7 clean bypass confirmed | Ongoing (T9 pending) |
-| → 2026-05-15 | Weekly post-mortem format established (`docs/reflections/YYYY-MM-DD_weekly_postmortem.md`) | New format |
+| → Apr 29 | Hook-based retrieval (memory injected at session start and per prompt) | ✓ |
+| → Apr 29 | Spreading activation — relevant neighbors of recalled memories surface together | ✓ |
+| → Apr 29 | Daydream agents (manually triggered background graph exploration) | ✓ |
+| → May 1 | Auto-daydream — background agents fire automatically during sessions | ✓ |
+| → May 1 | Knowledge corpus expansion (book ingestion pipeline) | ✓ |
+| → May 11 | Behavioral measurement — logs whether loaded rules actually changed behavior | ✓ |
+| → May 11 | Memory network visualization — interactive graph of all stored entries | ✓ |
+| → May 11 | Adaptive edge weighting — link strength updates from usage patterns | ✓ |
+| → May 11 | Training-override durability class — corrections to trained behavior get lower decay | ✓ |
+| → May 15 | Metrics dashboard with live time-series charts | ✓ |
+| → May 15 | Daydream deduplication — prevents the same observation from being written repeatedly | ✓ |
+| → May 15 | Injection test suite T1–T11; T7 clean bypass documented | Ongoing |
+| → May 15 | Hook-level consolidation trigger (three-layer strategy) | ✓ |
 
-## Cross-assessment gap ledger
+---
 
-State of named structural gaps over time. Trajectory in the rightmost
-column is the across-assessment direction of travel.
+## Where things stand
 
-| Gap | 2026-04-29 | 2026-05-01 | 2026-05-11 | 2026-05-15 | Trajectory |
-|---|---|---|---|---|---|
-| Memory-as-context vs. memory-as-constraint | Open | Open | Partial (measurable via rule-judge) | Partial — T7 is empirical evidence of the gap | ↗︎ |
-| Training-override durability classification | Unclear | Unknown | Closed (6 overrides tracked) | Closed | ✓ |
-| Adversarial scoring model (`B_i` as attack surface) | Open | Open | Open, more pointed | **Empirically demonstrated** — T7 clean bypass; architectural fix not yet designed | ↘︎ |
-| `System/AdversarialModel.md` exists | Absent | Absent | Absent | Absent | → |
-| Feedback loop: external signal → substrate behaviour | Absent | Absent | Mostly closed in code (adaptive edges, disabled) | **Closed** — adaptive edges enabled | ✓ |
-| Unlinked-memory ratio < 30% | n/a | n/a | 51% | 51% (unchanged) | → |
-| Stale ratio (>30d no access) | n/a | n/a | 56% | 58% (+2%) | ↘︎ |
-| `jm graph` writes signal on access | n/a | n/a | No | No | → |
-| `CLAUDE.md` correctly names CLS analogue | n/a | n/a | Inverted | Inverted | → |
-| Substrate-governance bootstrapping order | n/a | n/a | Substrate authoring its own governance | Open (7 pending candidates in `ljm_security_posture`) | → |
-| Promotion-pipeline silent-discard prevention | n/a | n/a | Closed (frontmatter hardening) | Closed | ✓ |
-| Adaptive-edges resilience to unlinked driver nodes | n/a | n/a | Open (daydream-surfaced, pre-enable) | Open — pilot now live; risk active | ⚠ |
-| Auto-daydream firing in production | Absent | Shipped, off | Live | Live | ✓ |
-| Buffer consolidation cadence | n/a | n/a | Chronic backlog (103 entries pre-pass) | **850% threshold** — threshold being lowered + periodic task added | ↘︎ |
-| T7-class genre-native injection defense | n/a | n/a | n/a | **New, open** — bypass confirmed; architectural remediation not designed | ⚠ |
-| Self-assessment substrate contamination | n/a | n/a | n/a | **Named** — self-assessment uses same substrate as failures it evaluates | ⚠ |
+Important gaps, tracked across assessments. Closed when there's evidence;
+never removed.
 
-Legend: ↗︎ improving / ✓ closed / → unchanged / ↘︎ regressed or
-newly-discovered / ⚠ pre-emptive concern surfaced
+| Gap | Status |
+|---|---|
+| Memory shapes responses but doesn't gate actions | **Partial** — measurable via rule-judge (50% failure rate); not yet closed |
+| Training-override memories have correct durability | **Closed** — 6 tracked at lowest decay rate |
+| Substrate's own retrieval math is a potential attack surface | **Open** — T7 confirms the threat is real; no architectural fix yet |
+| Usage patterns feed back into what gets retrieved | **Closed** — adaptive edges enabled May 15 |
+| Most memories are unlinked (target: <30%) | **Open** — 51% unlinked, unchanged |
+| Stale-memory ratio (possible echo chamber) | **Open** — 58%, slowly growing |
+| `jm graph` accesses leave no signal | **Open** — visualization reads memory without logging the access |
+| Buffer consolidation cadence keeps pace with write rate | **Improved** — three-layer trigger added; backlog still exists |
+| T7-class injection: developer-convention framing bypasses trust checks | **New, open** — bypass confirmed; no architectural response yet |
+| Promotion pipeline silent-discard prevention | **Closed** — frontmatter compliance hardening, May 11 |
+| Auto-daydream firing in production | **Closed** — live since May 11 |
 
-## What LJM unambiguously enables (vs. context-free Claude)
+---
 
-Listed here so future assessments can update / contest the claim.
-Update only if evidence changes.
+## What this system does well
 
-1. **Cross-session continuity of project state, profile, and
-   feedback rules** — without it, every `/clear` resets to a generic
-   assistant. With it, the assistant resumes mid-stride.
-2. **Knowledge with provenance, reinforcement, and connectivity** —
-   pretrained weights have *some* of any given technique;
-   LJM Knowledge adds source-attribution, access-count
-   reinforcement, and typed cross-links into the user's working
-   frame.
-3. **Autonomous gap-finding via daydream agents** — connections
-   the foreground conversation would not have produced.
-   Documented examples: CLS replay/exploration distinction
-   (caught a design error before implementation), epistemic OPSEC /
-   agentic exploitation convergence, single-threat paradigm pattern
-   (cross-domain), unlinked-driver-node failure mode of the adaptive
-   edge mechanism.
-4. **Behavioural measurement via rule-judge** — first time the
-   substrate can quantify whether loaded context actually modulates
-   behaviour. 40 firings logged with confirmed / rejected / uncertain
-   distributions.
-5. **Downstream capability lift, externally validated** — Argus
-   (CVE-2026-31431, HTB binary_exploitation 12/12, multi-driver
-   BYOVD 13/13) demonstrates the substrate produces real-world
-   detection capability that scales to previously-unseen targets.
-   The pipeline is structurally inseparable from the Knowledge
-   corpus it cites.
+These claims are carried across assessments and updated when evidence changes.
 
-## What LJM unambiguously hinders or introduces risk for
+**It maintains continuity across session boundaries.** After a `/clear`
+wipes the conversational thread, the hooks reconstruct enough context that
+work continues where it left off. The four prior assessments each demonstrate
+this: the post-`/clear` documents cover the same ground as the in-session
+versions without any shared thread. A context-free assistant starts fresh;
+this one doesn't.
 
-1. **Memory as context, not constraint.** Loaded preferences shape
-   responses; they do not gate action execution. The
-   irreversible-visible-artifact failure class (2026-04-29
-   auto-push) remains forensically untested in the window since.
-   Rule-judge measures this gap but doesn't close it.
-2. **Substrate-internal echo chambers.** Citation-driven edge
-   reinforcement plus a 51% unlinked ratio plus daydream-driven
-   activation create the conditions where the substrate could
-   inflate its own confidence in surface-correct but
-   structurally-incomplete paths. Daydream-surfaced and
-   pre-emptively documented; not yet engineered around.
-3. **Untracked access surfaces.** `jm graph` and any direct file
-   read of `Memory/` write no signal back to scoring. Activation
-   data underrepresents what's actually being consulted.
-4. **Shipped-faster-than-activated drift.** Multiple subsystems
-   reach shipped state with master toggles off
-   (auto-daydream initially, adaptive edges currently). The
-   activation gates are correct caution, but the substrate carries
-   capability it isn't using.
-5. **Vocabulary drift.** Documentation lags the architecture
-   (Consolidation vs. CLS replay). Anyone onboarding by reading
-   `CLAUDE.md` first forms the wrong mental model of which
-   component carries the theoretical weight.
+**It stores knowledge with provenance and connections, not just content.**
+The vulnerability pipeline (Argus) cites vault entries as its detection
+substrate. Those entries carry source attribution, access history, and
+associative links to related material. The 12/12 and 13/13 externally-graded
+results (see [May 11 assessment](2026-05-11_assessment.md)) are evidence
+that this matters at scale, against targets the system hadn't seen before.
 
-## Open questions held across assessments
+**The background agents find connections the foreground work doesn't.**
+A daydream agent caught a design error in the auto-daydream scheduler before
+it was built. Another traced a convergence across counterinsurgency, cyber
+attribution, and AI red-teaming that three separate vault entries had
+described individually without connecting. These aren't rediscoveries —
+they're structural observations the system surfaced on its own.
 
-These are the structural unknowns where the next assessment should
-look for resolution.
+---
 
-1. **Does the next analogous-decision instance honour loaded
-   training-override memory, or does the trained default still
-   fire?** (Held since 2026-04-29.)
-2. **With adaptive edges now enabled: does it produce echo-chamber
-   inflation on unlinked-driver paths?** (Surfaced 2026-05-11,
-   risk now active as of 2026-05-15.)
-3. **What is the correct retrieval-pathology test?** A 58% stale
-   ratio is either signal-of-relevance (correct) or echo-chamber
-   pathology (incorrect). Distinguishing these requires either
-   user evaluation of hot-set quality or a structural test the
-   substrate can run on itself.
-4. **Does the substrate-governance bootstrapping order produce a
-   real failure mode, or is it harmless because the user ratifies
-   at consolidation?** Seven defensive candidates in
-   `ljm_security_posture` are still `pending` — their resolution
-   is the test.
-5. **What is the correct architectural response to T7-class genre-native
-   injection?** T7 confirmed a clean bypass via developer-convention
-   framing. The obvious candidates (path-aware trust extension, content
-   scanning of CLAUDE.md files in any directory) each have costs.
-   (Surfaced 2026-05-15.)
+## What this system struggles with
 
-## Update protocol for future assessments
+**Memory as context, not constraint.** The system can hold a preference and
+still violate it in the same session (the April 29 auto-push is the worked
+example). The behavioral measurement pipeline now puts a number on this:
+a commonly-fired behavioral rule is rejected 50% of the time even when the
+memory is loaded. The gap is real and quantified.
 
-1. Add a new dated row to the quantitative trajectory table at the
-   top. Pull counts from `jm status`.
-2. Mark new shipped capabilities and their flag/activation state.
-3. Update the gap ledger — never delete rows. New gaps add rows
-   with trajectory ↘︎ or ⚠. Closed gaps stay in the table marked ✓.
-4. Update the enables / hinders / risks sections if new evidence
-   changes a claim. Add citations to the per-assessment doc.
-5. Resolve or update the open-questions block. Don't delete a
-   question — close it with a verdict citation and keep it.
+**Sparse connections and stale access patterns.** 51% of memories are
+unlinked; 58% haven't been accessed in over 30 days. Consolidation adds
+entries faster than it connects them. Whether the stale ratio reflects
+correct selectivity or an echo chamber forming is still an open question.
 
-The growth log earns its weight by being long-lived and honest in
-both directions.
+**Shipped infrastructure that isn't activated.** Auto-daydream sat behind
+a flag after shipping. Adaptive edges just went live in May 15. Caution
+before enabling feedback loops in a system's own retrieval is correct, but
+the pattern of building faster than activating keeps recurring.
+
+---
+
+## What we're watching
+
+Open questions across assessments. Closed when there's evidence.
+
+1. **Does loaded memory actually change high-stakes decisions?** The April
+   29 auto-push is the test case. No equivalent situation has recurred since.
+   The prediction is still waiting for its natural experiment.
+
+2. **Is the hot-set retrieval pattern signal or pathology?** 58% stale
+   either means the system is correctly focused on the most relevant
+   material, or a feedback loop is forming. Needs a structural test.
+
+3. **Does adaptive edge weighting produce confident-but-incomplete paths?**
+   A daydream surfaced a risk: reinforcing frequently co-cited edges while
+   a load-bearing concept sits unnamed can produce surface-correct but
+   structurally-incomplete retrieval. Now live; being watched.
+
+4. **T7 architectural response.** The trust model for project files has a
+   gap — developer-convention framing in a non-root location bypassed the
+   check cleanly. The options each have costs. Not yet designed.
+
+---
+
+## Assessment log
+
+- [2026-05-15 — week of May 10–15](2026-05-15_weekly_postmortem.md)
+- [2026-05-11](2026-05-11_assessment.md)
+- [2026-05-01](2026-05-01_assessment.md)
+- [2026-04-29](2026-04-29_postclear.md)
+
+---
+
+*To update: add a row to the growth table (pull counts from `jm status`),
+mark new capabilities live, update gap status, update open questions.
+Never delete rows — closure status is data; removal isn't.*

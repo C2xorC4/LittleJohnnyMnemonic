@@ -133,32 +133,16 @@ Authoritative spec: [`CLAUDE.md`](CLAUDE.md).
 
 ## Behaviour in practice — self-assessments
 
-The substrate produces an audit trail you can read. Two complementary
-assessment formats live in `docs/reflections/`:
+Periodic honest reflections on what worked, what didn't, and where both
+the system and the operator fell short. Written for technical and
+non-technical readers alike, with technical detail linked out rather than
+inlined. All cross-referenced in the
+[Executive growth log](docs/reflections/EXECUTIVE_SUMMARY.md).
 
-**Post-`/clear` substrate health checks** — written by a fresh agent
-in a fresh session with no access to the prior conversation thread.
-Tests what survived the context boundary, what hooks reconstructed,
-where the gap between *memory as context* and *memory as constraint*
-shows up. The technical instrument.
-
-**Weekly post-mortems** — written in-session at the end of a working
-week. What actually happened, where things went right or wrong, honest
-appraisal of operator and agent contributions. Accessible to both
-technical and non-technical readers. The operational instrument.
-
-Both feed into the [Executive growth log](docs/reflections/EXECUTIVE_SUMMARY.md),
-which carries the cross-assessment trajectory in one place.
-
-### Post-`/clear` assessments
-
-- [2026-05-11 — third post-`/clear` self-assessment](docs/reflections/2026-05-11_assessment.md)
-- [2026-05-01 — second self-assessment, after auto-daydream v1 ship](docs/reflections/2026-05-01_assessment.md)
-- [2026-04-29 — first post-`/clear` self-assessment](docs/reflections/2026-04-29_postclear.md)
-
-### Weekly post-mortems
-
-- [2026-05-15 — week of May 10–15: T7 bypass, Mimic 97%, Argus methodology, metrics pipeline](docs/reflections/2026-05-15_weekly_postmortem.md)
+- [2026-05-15 — T7 injection bypass, Mimic 97%, methodology gaps, metrics pipeline](docs/reflections/2026-05-15_weekly_postmortem.md)
+- [2026-05-11 — behavioral measurement, adaptive edges, Argus external validation](docs/reflections/2026-05-11_assessment.md)
+- [2026-05-01 — auto-daydream ships, daydream catches a design error, knowledge corpus doubles](docs/reflections/2026-05-01_assessment.md)
+- [2026-04-29 — first assessment: auto-push failure, hook reconstruction, research ingested](docs/reflections/2026-04-29_postclear.md)
 
 ## Architecture overview
 
