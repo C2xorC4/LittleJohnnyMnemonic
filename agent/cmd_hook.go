@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -164,6 +165,10 @@ func runSessionStart(vaultRoot string, input *hookInput) {
 		bufferTrustDetection(vaultRoot, sentinel, files)
 	}
 
+	// Spawn consolidation in the background if buffer is backed up. Detached
+	// and non-blocking — runs concurrently with the session-start context load.
+	spawnConsolidationIfNeeded(vaultRoot, LoadConfig(vaultRoot))
+
 	memories, err := LoadAllMemories(vaultRoot)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "[jm hook] session-start: load memories: %v\n", err)
@@ -315,6 +320,73 @@ func surfaceFreshDaydreamsToHook(vaultRoot, prompt, sessionID string, now time.T
 			fmt.Fprintf(os.Stderr, "[jm hook] mark surfaced: %v\n", err)
 		}
 	}
+}
+
+// spawnConsolidationIfNeeded fires a detached `jm consolidate --trigger hook`
+// when the buffer is at or above threshold and the cooldown has elapsed.
+// Designed to be called from session-start and stop hooks. Never blocks hook
+// flow — all errors are logged to stderr and ignored.
+func spawnConsolidationIfNeeded(vaultRoot string, cfg Config) {
+	entries, err := LoadAllBufferEntries(vaultRoot)
+	if err != nil || len(entries) < cfg.BufferThreshold {
+		return
+	}
+
+	cooldown := time.Duration(cfg.AutoConsolidationCooldownMinutes) * time.Minute
+	if cooldown > 0 {
+		if last := readLastAutoConsolidationTrigger(vaultRoot); !last.IsZero() && time.Since(last) < cooldown {
+			return
+		}
+	}
+
+	recordAutoConsolidationTrigger(vaultRoot, time.Now())
+
+	exe, err := os.Executable()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "[jm hook] consolidation spawn: locate exe: %v\n", err)
+		return
+	}
+
+	cmd := exec.Command(exe, "consolidate", "--trigger", "hook")
+	devnull, err := os.OpenFile(os.DevNull, os.O_WRONLY, 0)
+	if err == nil {
+		cmd.Stdout = devnull
+		cmd.Stderr = devnull
+	}
+	detachSysProcAttr(cmd)
+
+	if err := cmd.Start(); err != nil {
+		fmt.Fprintf(os.Stderr, "[jm hook] consolidation spawn: start: %v\n", err)
+		return
+	}
+	_ = cmd.Process.Release()
+}
+
+func recordAutoConsolidationTrigger(vaultRoot string, t time.Time) {
+	path := filepath.Join(vaultRoot, "Metrics", "auto_consolidation_trigger.json")
+	_ = os.MkdirAll(filepath.Dir(path), 0o755)
+	payload := map[string]any{"triggered_utc": t.UTC().Format(time.RFC3339)}
+	data, _ := json.MarshalIndent(payload, "", "  ")
+	_ = os.WriteFile(path, data, 0o644)
+}
+
+func readLastAutoConsolidationTrigger(vaultRoot string) time.Time {
+	path := filepath.Join(vaultRoot, "Metrics", "auto_consolidation_trigger.json")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return time.Time{}
+	}
+	var payload struct {
+		TriggeredUTC string `json:"triggered_utc"`
+	}
+	if err := json.Unmarshal(data, &payload); err != nil {
+		return time.Time{}
+	}
+	t, err := time.Parse(time.RFC3339, payload.TriggeredUTC)
+	if err != nil {
+		return time.Time{}
+	}
+	return t
 }
 
 // isDensePrompt decides whether a prompt is substantive enough to

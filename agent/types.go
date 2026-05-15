@@ -131,9 +131,10 @@ type Config struct {
 	MaxMemoriesLoaded  int     `yaml:"max_memories_loaded"`
 
 	// Consolidation
-	BufferThreshold    int    `yaml:"buffer_threshold"`
-	ConsolidationDepth string `yaml:"consolidation_depth"`
-	MaxHolds           int    `yaml:"max_holds"`
+	BufferThreshold                  int    `yaml:"buffer_threshold"`
+	ConsolidationDepth               string `yaml:"consolidation_depth"`
+	MaxHolds                         int    `yaml:"max_holds"`
+	AutoConsolidationCooldownMinutes int    `yaml:"auto_consolidation_cooldown_minutes"`
 
 	// Context integrity
 	ContextPenaltyPartial    float64 `yaml:"context_penalty_partial"`
@@ -275,9 +276,10 @@ func DefaultConfig() Config {
 		RetrievalThreshold: 0.3,
 		MaxMemoriesLoaded:  15,
 
-		BufferThreshold:    20,
-		ConsolidationDepth: "standard",
-		MaxHolds:           2,
+		BufferThreshold:                  10,
+		ConsolidationDepth:               "standard",
+		MaxHolds:                         2,
+		AutoConsolidationCooldownMinutes: 30,
 
 		ContextPenaltyPartial:   0.7,
 		ContextPenaltyOrphan:    0.5,

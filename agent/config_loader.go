@@ -119,6 +119,9 @@ func applyScalarOverrides(cfg *Config, s map[string]string) {
 	if v, ok := s["max_holds"]; ok {
 		cfg.MaxHolds = atoiOrKeep(v, cfg.MaxHolds)
 	}
+	if v, ok := s["auto_consolidation_cooldown_minutes"]; ok {
+		cfg.AutoConsolidationCooldownMinutes = atoiOrKeep(v, cfg.AutoConsolidationCooldownMinutes)
+	}
 
 	if v, ok := s["context_penalty_partial"]; ok {
 		cfg.ContextPenaltyPartial = atofOrKeep(v, cfg.ContextPenaltyPartial)

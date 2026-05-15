@@ -17,12 +17,13 @@ import (
 // The judge does the LLM call asynchronously and appends a separate
 // "judge" stage record. Hook returns in well under 100ms.
 func runStop(vaultRoot string, input *hookInput) {
-	// Backup hook — independent of behavioral rules. Defer so it runs no
-	// matter which early-return branch the rule scanner takes (or doesn't
-	// take). Cooldown-gated and fail-soft inside MaybeRunBackup.
+	// Backup and consolidation triggers — independent of behavioral rules.
+	// Defer so they run regardless of which early-return branch the rule
+	// scanner takes. Both are cooldown-gated and fail-soft.
 	defer func() {
 		cfg := LoadConfig(vaultRoot)
 		_, _ = MaybeRunBackup(cfg, vaultRoot, "stop")
+		spawnConsolidationIfNeeded(vaultRoot, cfg)
 	}()
 
 	rules, err := loadBehavioralRules(vaultRoot)

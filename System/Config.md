@@ -14,10 +14,15 @@ creation_grace_days: 7          # memories created within this window are immune
 ## Consolidation
 
 ```yaml
-buffer_threshold: 10            # max buffer entries before forced consolidation
-consolidation_depth: standard   # quick | standard | deep
-max_holds: 3                    # max consolidation cycles an entry can be held before forced discard
+buffer_threshold: 10                        # max buffer entries before hook-triggered auto-consolidation fires
+consolidation_depth: standard               # quick | standard | deep
+max_holds: 3                                # max consolidation cycles an entry can be held before forced discard
+auto_consolidation_cooldown_minutes: 30     # min interval between hook-triggered consolidation spawns
 ```
+
+Hook-triggered consolidation fires from two points: **session-start** (catches backed-up buffers at the beginning of a session) and the **stop hook** (catches mid-session accumulation after each assistant turn). The cooldown prevents concurrent spawns — once a consolidation is triggered, the next hook check will skip until the window elapses. The `JmConsolidate` scheduled task (every 6h) provides the third layer for idle-period gaps.
+
+The cooldown applies per-machine via `Metrics/auto_consolidation_trigger.json`. Default 30 minutes. Set to 0 to disable the cooldown (not recommended — concurrent consolidation runs can race on buffer files).
 
 ## Rate Separation (CLS-Inspired)
 
