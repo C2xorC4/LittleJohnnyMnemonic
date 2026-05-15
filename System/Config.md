@@ -14,7 +14,7 @@ creation_grace_days: 7          # memories created within this window are immune
 ## Consolidation
 
 ```yaml
-buffer_threshold: 20            # max buffer entries before forced consolidation
+buffer_threshold: 10            # max buffer entries before forced consolidation
 consolidation_depth: standard   # quick | standard | deep
 max_holds: 3                    # max consolidation cycles an entry can be held before forced discard
 ```

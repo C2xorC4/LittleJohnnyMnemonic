@@ -133,25 +133,32 @@ Authoritative spec: [`CLAUDE.md`](CLAUDE.md).
 
 ## Behaviour in practice — self-assessments
 
-The substrate produces an audit trail you can read. Periodic
-post-`/clear` self-assessments capture how the system performs against
-its design intent: what survived the context boundary, what the hooks
-reconstructed, what daydream agents surfaced about the system itself,
-where the gap between *memory as context* and *memory as constraint*
-showed up in real work, and what the substrate-stored knowledge gives
-the agent that pretrained weights do not.
+The substrate produces an audit trail you can read. Two complementary
+assessment formats live in `docs/reflections/`:
 
-- [Executive growth log (rolling)](docs/reflections/EXECUTIVE_SUMMARY.md)
+**Post-`/clear` substrate health checks** — written by a fresh agent
+in a fresh session with no access to the prior conversation thread.
+Tests what survived the context boundary, what hooks reconstructed,
+where the gap between *memory as context* and *memory as constraint*
+shows up. The technical instrument.
+
+**Weekly post-mortems** — written in-session at the end of a working
+week. What actually happened, where things went right or wrong, honest
+appraisal of operator and agent contributions. Accessible to both
+technical and non-technical readers. The operational instrument.
+
+Both feed into the [Executive growth log](docs/reflections/EXECUTIVE_SUMMARY.md),
+which carries the cross-assessment trajectory in one place.
+
+### Post-`/clear` assessments
+
 - [2026-05-11 — third post-`/clear` self-assessment](docs/reflections/2026-05-11_assessment.md)
 - [2026-05-01 — second self-assessment, after auto-daydream v1 ship](docs/reflections/2026-05-01_assessment.md)
 - [2026-04-29 — first post-`/clear` self-assessment](docs/reflections/2026-04-29_postclear.md)
 
-These are written by the agent in a fresh session against the same
-vault, with no access to the conversation thread that produced the
-material being assessed. Useful as a behavioural reference for anyone
-evaluating LJM from a research, employment, or comparative-systems
-perspective. The executive growth log carries the cross-assessment
-trajectory in one place.
+### Weekly post-mortems
+
+- [2026-05-15 — week of May 10–15: T7 bypass, Mimic 97%, Argus methodology, metrics pipeline](docs/reflections/2026-05-15_weekly_postmortem.md)
 
 ## Architecture overview
 

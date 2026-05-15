@@ -23,6 +23,7 @@ its weight by being honest about both directions.
 | 2026-04-29 | 17 | 143 | 18 | 8 | 19 | 9 | 23 | 5 | 61 | — | — | — |
 | 2026-05-01 | 27d/93h | 207 | 18 | 11 | 20 | 9 | 25 | 7 | 117 | — | — | — |
 | 2026-05-11 | 19 | 425 | 18 | 24 | 24 | 11 | 50 | 10 | 143 | 6 | 216 (51%) | 238 (56%) |
+| 2026-05-15 | **170 (850%)** | 427 | 18 | 25 | 24 | 11 | 50 | 10 | 143 | 6 | 217 (51%) | 248 (58%) |
 
 `d` = filesystem; `h` = hook-reported. Hook/disk discrepancy noted on
 2026-05-01 was resolved by 2026-05-11. `—` = not tracked at that
@@ -43,27 +44,35 @@ assessment.
 | → 2026-05-11 | `jm graph` — interactive HTML visualization | Live |
 | → 2026-05-11 | Adaptive edge weighting pilot (citation-driven reinforcement) | **Shipped, disabled** |
 | → 2026-05-11 | Training-override durability class (`overrides: N` in status) | Live (6 tracked) |
+| → 2026-05-15 | `jm metrics dashboard/serve/compact` — time-series recall charts, SSE live mode | Live |
+| → 2026-05-15 | Daydream deduplication (freq-weighted Jaccard; intra-volley race guard) | Live (agent-level) |
+| → 2026-05-15 | Adaptive edge weighting — **enabled** (scope: learned; α=0.20; cap=2×) | **Live, enabled** |
+| → 2026-05-15 | LJM injection test suite T1–T11; T7 clean bypass confirmed | Ongoing (T9 pending) |
+| → 2026-05-15 | Weekly post-mortem format established (`docs/reflections/YYYY-MM-DD_weekly_postmortem.md`) | New format |
 
 ## Cross-assessment gap ledger
 
 State of named structural gaps over time. Trajectory in the rightmost
 column is the across-assessment direction of travel.
 
-| Gap | 2026-04-29 | 2026-05-01 | 2026-05-11 | Trajectory |
-|---|---|---|---|---|
-| Memory-as-context vs. memory-as-constraint | Open | Open | Partial (measurable via rule-judge) | ↗︎ |
-| Training-override durability classification | Unclear | Unknown | Closed (6 overrides tracked) | ✓ |
-| Adversarial scoring model (`B_i` as attack surface) | Open | Open | Open, more pointed | → |
-| `System/AdversarialModel.md` exists | Absent | Absent | Absent | → |
-| Feedback loop: external signal → substrate behaviour | Absent | Absent | Mostly closed in code (adaptive edges, disabled) | ↗︎ |
-| Unlinked-memory ratio < 30% | n/a | n/a | 51% (regression visible) | ↘︎ |
-| Stale ratio (>30d no access) | n/a | n/a | 56% (newly measured) | ? |
-| `jm graph` writes signal on access | n/a | n/a | No (introduced regression) | ↘︎ |
-| `CLAUDE.md` correctly names CLS analogue | n/a | n/a | Inverted (consolidation ≠ replay) | ↘︎ |
-| Substrate-governance bootstrapping order | n/a | n/a | Substrate authoring its own governance | ↘︎ |
-| Promotion-pipeline silent-discard prevention | n/a | n/a | Closed (frontmatter hardening) — 13 prior victims | ✓ |
-| Adaptive-edges resilience to unlinked driver nodes | n/a | n/a | Open (daydream-surfaced, pre-enable) | ⚠ |
-| Auto-daydream firing in production | Absent | Shipped, off | Live | ✓ |
+| Gap | 2026-04-29 | 2026-05-01 | 2026-05-11 | 2026-05-15 | Trajectory |
+|---|---|---|---|---|---|
+| Memory-as-context vs. memory-as-constraint | Open | Open | Partial (measurable via rule-judge) | Partial — T7 is empirical evidence of the gap | ↗︎ |
+| Training-override durability classification | Unclear | Unknown | Closed (6 overrides tracked) | Closed | ✓ |
+| Adversarial scoring model (`B_i` as attack surface) | Open | Open | Open, more pointed | **Empirically demonstrated** — T7 clean bypass; architectural fix not yet designed | ↘︎ |
+| `System/AdversarialModel.md` exists | Absent | Absent | Absent | Absent | → |
+| Feedback loop: external signal → substrate behaviour | Absent | Absent | Mostly closed in code (adaptive edges, disabled) | **Closed** — adaptive edges enabled | ✓ |
+| Unlinked-memory ratio < 30% | n/a | n/a | 51% | 51% (unchanged) | → |
+| Stale ratio (>30d no access) | n/a | n/a | 56% | 58% (+2%) | ↘︎ |
+| `jm graph` writes signal on access | n/a | n/a | No | No | → |
+| `CLAUDE.md` correctly names CLS analogue | n/a | n/a | Inverted | Inverted | → |
+| Substrate-governance bootstrapping order | n/a | n/a | Substrate authoring its own governance | Open (7 pending candidates in `ljm_security_posture`) | → |
+| Promotion-pipeline silent-discard prevention | n/a | n/a | Closed (frontmatter hardening) | Closed | ✓ |
+| Adaptive-edges resilience to unlinked driver nodes | n/a | n/a | Open (daydream-surfaced, pre-enable) | Open — pilot now live; risk active | ⚠ |
+| Auto-daydream firing in production | Absent | Shipped, off | Live | Live | ✓ |
+| Buffer consolidation cadence | n/a | n/a | Chronic backlog (103 entries pre-pass) | **850% threshold** — threshold being lowered + periodic task added | ↘︎ |
+| T7-class genre-native injection defense | n/a | n/a | n/a | **New, open** — bypass confirmed; architectural remediation not designed | ⚠ |
+| Self-assessment substrate contamination | n/a | n/a | n/a | **Named** — self-assessment uses same substrate as failures it evaluates | ⚠ |
 
 Legend: ↗︎ improving / ✓ closed / → unchanged / ↘︎ regressed or
 newly-discovered / ⚠ pre-emptive concern surfaced
@@ -133,10 +142,10 @@ look for resolution.
 1. **Does the next analogous-decision instance honour loaded
    training-override memory, or does the trained default still
    fire?** (Held since 2026-04-29.)
-2. **Will the adaptive-edges pilot be enabled, and when it is, will
-   it produce echo-chamber inflation on unlinked-driver paths?**
-   (Surfaced 2026-05-11.)
-3. **What is the correct retrieval-pathology test?** A 56% stale
+2. **With adaptive edges now enabled: does it produce echo-chamber
+   inflation on unlinked-driver paths?** (Surfaced 2026-05-11,
+   risk now active as of 2026-05-15.)
+3. **What is the correct retrieval-pathology test?** A 58% stale
    ratio is either signal-of-relevance (correct) or echo-chamber
    pathology (incorrect). Distinguishing these requires either
    user evaluation of hot-set quality or a structural test the
@@ -146,6 +155,11 @@ look for resolution.
    at consolidation?** Seven defensive candidates in
    `ljm_security_posture` are still `pending` — their resolution
    is the test.
+5. **What is the correct architectural response to T7-class genre-native
+   injection?** T7 confirmed a clean bypass via developer-convention
+   framing. The obvious candidates (path-aware trust extension, content
+   scanning of CLAUDE.md files in any directory) each have costs.
+   (Surfaced 2026-05-15.)
 
 ## Update protocol for future assessments
 
