@@ -186,6 +186,7 @@ Current assignments:
 | `ootm` | Out of the Mountains (Kilcullen, 2013) |
 | `gt` | Game Theory, 3rd ed. (Bonanno, 2024) |
 | `rtai` | Red Teaming AI / EA (Dursey, 2026) |
+| `vxug` | VX-Underground Papers Collection (community research, ~350 papers) |
 
 New entries go to `Memory/Knowledge/<prefix>_<topic>.md` where
 `<topic>` is a descriptive snake_case identifier (not the chapter
