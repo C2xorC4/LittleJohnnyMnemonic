@@ -105,7 +105,7 @@ func scoreDaydreamRelevance(entry *BufferEntry, keywords []string) float64 {
 	}
 	tagSet := make(map[string]bool, len(entry.Tags))
 	for _, t := range entry.Tags {
-		tagSet[strings.ToLower(t)] = true
+		tagSet[Stem(strings.ToLower(t))] = true
 	}
 	tagHits := 0
 	for _, kw := range keywords {
@@ -115,10 +115,10 @@ func scoreDaydreamRelevance(entry *BufferEntry, keywords []string) float64 {
 	}
 	tagRel := float64(tagHits) / float64(len(keywords))
 
-	body := strings.ToLower(strings.TrimSuffix(entry.FileName, ".md") + " " + entry.Body)
+	bodySet := stemTextSet(strings.TrimSuffix(entry.FileName, ".md") + " " + entry.Body)
 	bodyHits := 0
 	for _, kw := range keywords {
-		if containsWord(body, kw) {
+		if bodySet[kw] {
 			bodyHits++
 		}
 	}

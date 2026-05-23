@@ -23,10 +23,12 @@ associative connections to other entries; *Stale* = not accessed in 30+ days.
 | 2026-05-01 | 93 | 207 | — | — | — |
 | 2026-05-11 | 19 | 425 | 6 | 51% | 56% |
 | 2026-05-15 | **170** | 427 | 6 | 51% | 58% |
+| 2026-05-22 | 32 | 546 | 11 | 60% | 67% |
 
 The 170-entry buffer on 2026-05-15 represents a backlog — consolidation
 wasn't keeping pace with the write rate. Hook-level triggers and a scheduled
-task were added to address this.
+task were added to address this. The stale ratio is trending up despite
+auto-consolidation, which handles new entries but not dormant LTM activation.
 
 For a full breakdown by memory category (User, Feedback, Project, Semantic,
 etc.), see the per-assessment documents.
@@ -50,6 +52,10 @@ etc.), see the per-assessment documents.
 | → May 15 | Daydream deduplication — prevents the same observation from being written repeatedly | ✓ |
 | → May 15 | Injection test suite T1–T11; T7 clean bypass documented | Ongoing |
 | → May 15 | Hook-level consolidation trigger (three-layer strategy) | ✓ |
+| → May 22 | Keyword stemming — Porter Step 1 applied symmetrically across all matching paths | ✓ |
+| → May 22 | T7 architectural fix — scan subdirectory + hash-gated approval for non-root CLAUDE.md | ✓ |
+| → May 22 | Adaptive edge decay — uplift-only temporal decay (λ=0.003851, 180-day half-life) | ✓ |
+| → May 22 | AppendRetrievalSession wired into hook path — adaptive edge gap 3 closed | ✓ |
 
 ---
 
@@ -62,13 +68,13 @@ never removed.
 |---|---|
 | Memory shapes responses but doesn't gate actions | **Partial** — measurable via rule-judge (50% failure rate); not yet closed |
 | Training-override memories have correct durability | **Closed** — 6 tracked at lowest decay rate |
-| Substrate's own retrieval math is a potential attack surface | **Open** — T7 confirms the threat is real; no architectural fix yet |
+| Substrate's own retrieval math is a potential attack surface | **Partial** — T7 fixed (non-root CLAUDE.md gated by hash approval); retrieval scoring itself not yet hardened |
 | Usage patterns feed back into what gets retrieved | **Closed** — adaptive edges enabled May 15 |
 | Most memories are unlinked (target: <30%) | **Open** — 51% unlinked, unchanged |
-| Stale-memory ratio (possible echo chamber) | **Open** — 58%, slowly growing |
+| Stale-memory ratio (possible echo chamber) | **Open** — 67%, still growing |
 | `jm graph` accesses leave no signal | **Open** — visualization reads memory without logging the access |
 | Buffer consolidation cadence keeps pace with write rate | **Improved** — three-layer trigger added; backlog still exists |
-| T7-class injection: developer-convention framing bypasses trust checks | **New, open** — bypass confirmed; no architectural response yet |
+| T7-class injection: developer-convention framing bypasses trust checks | **Closed** — hash-gated approval (`approved_hashes`), `trusted-unapproved` sentinel, `jm trust approve` command; shipped May 22 |
 | Promotion pipeline silent-discard prevention | **Closed** — frontmatter compliance hardening, May 11 |
 | Auto-daydream firing in production | **Closed** — live since May 11 |
 
@@ -109,8 +115,8 @@ example). The behavioral measurement pipeline now puts a number on this:
 a commonly-fired behavioral rule is rejected 50% of the time even when the
 memory is loaded. The gap is real and quantified.
 
-**Sparse connections and stale access patterns.** 51% of memories are
-unlinked; 58% haven't been accessed in over 30 days. Consolidation adds
+**Sparse connections and stale access patterns.** 60% of memories are
+unlinked; 67% haven't been accessed in over 30 days. Consolidation adds
 entries faster than it connects them. Whether the stale ratio reflects
 correct selectivity or an echo chamber forming is still an open question.
 
@@ -144,20 +150,30 @@ Open questions across assessments. Closed when there's evidence.
 3. **Does adaptive edge weighting produce confident-but-incomplete paths?**
    A daydream surfaced a risk: reinforcing frequently co-cited edges while
    a load-bearing concept sits unnamed can produce surface-correct but
-   structurally-incomplete retrieval. Now live; being watched.
+   structurally-incomplete retrieval. **Gap 3 closed (2026-05-22):**
+   `AppendRetrievalSession` is now wired into the hook path; conversational
+   retrieval sessions write to `retrieval_sessions.jsonl`. Two gaps remain:
+   (1) `RetrievalSessionLogEnabled` config gate must be opened, (2)
+   `pickStableTrace` needs a code path that reads `edge_usage.jsonl`. Until
+   both close, edge weights don't move. The mechanism is architecturally
+   correct; the pilot needs one config change and one code path.
 
-4. **T7 architectural response.** The trust model for project files has a
-   gap — developer-convention framing in a non-root location bypassed the
-   check cleanly. The options each have costs. Not yet designed.
+4. **T7 architectural response.** ~~Not yet designed.~~ Shipped May 22.
+   Non-root CLAUDE.md files in trusted repos now require SHA256 approval
+   via `approved_hashes` in `trusted_repos.json`. Unapproved files trigger
+   a `trusted-unapproved` warning (shows content, no write block). The
+   vector that T7 exploited — plausible formatting, non-root path — is
+   now gated. Retrieval-path injection (scoring manipulation) remains open.
 
 ---
 
 ## Assessment log
 
-- [2026-05-15 — week of May 10–15](2026-05-15_weekly_postmortem.md)
+- [2026-05-22](2026-05-22_assessment.md)
+- [2026-05-15 — week of May 10–15](2026-05-15_assessment.md)
 - [2026-05-11](2026-05-11_assessment.md)
 - [2026-05-01](2026-05-01_assessment.md)
-- [2026-04-29](2026-04-29_postclear.md)
+- [2026-04-29](2026-04-29_assessment.md)
 
 ---
 

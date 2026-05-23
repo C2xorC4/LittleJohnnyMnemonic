@@ -200,3 +200,100 @@ func TestBuildGraphWithUsage_AdaptiveLayerApplied(t *testing.T) {
 		t.Errorf("adaptive edge weight = %f, expected %f", edges[0].Weight, expected)
 	}
 }
+
+// --- Temporal decay tests ---
+
+func TestEffectiveEdgeWeight_Decay_LambdaZero_NoDecay(t *testing.T) {
+	cfg := adaptiveConfig()
+	cfg.AdaptiveEdgeDecayLambda = 0 // explicitly disabled
+	usage := map[string]EdgeUsage{
+		edgeUsageKey("memory/x/a", "memory/x/b", "learned"): {
+			Source: "memory/x/a", Target: "memory/x/b", Relationship: "learned",
+			UsageCount: 5, LastUsed: time.Now().Add(-365 * 24 * time.Hour), // 1 year ago — no effect when λ=0
+		},
+	}
+	link := Link{Target: "memory/x/b", Relationship: "learned"}
+	w := effectiveEdgeWeight("memory/x/a", "memory/x/b", link, cfg, usage)
+	expected := 0.4 * (1.0 + 0.2*math.Log(6.0)) // same as pre-decay formula
+	if math.Abs(w-expected) > 1e-9 {
+		t.Errorf("lambda=0 should not decay: weight = %f, expected %f", w, expected)
+	}
+}
+
+func TestEffectiveEdgeWeight_Decay_FreshEdge_FullUplift(t *testing.T) {
+	cfg := adaptiveConfig() // decay lambda = 0.003851 (default)
+	usage := map[string]EdgeUsage{
+		edgeUsageKey("memory/x/a", "memory/x/b", "learned"): {
+			Source: "memory/x/a", Target: "memory/x/b", Relationship: "learned",
+			UsageCount: 5, LastUsed: time.Now(), // just now — decay ≈ 1.0
+		},
+	}
+	link := Link{Target: "memory/x/b", Relationship: "learned"}
+	w := effectiveEdgeWeight("memory/x/a", "memory/x/b", link, cfg, usage)
+	expected := 0.4 * (1.0 + 0.2*math.Log(6.0))
+	if math.Abs(w-expected) > 1e-4 { // small tolerance for sub-millisecond timing
+		t.Errorf("fresh edge: weight = %f, expected ~%f", w, expected)
+	}
+}
+
+func TestEffectiveEdgeWeight_Decay_HalfLife180Days(t *testing.T) {
+	cfg := adaptiveConfig()
+	cfg.AdaptiveEdgeDecayLambda = 0.003851 // 180-day half-life
+	lastUsed := time.Now().Add(-180 * 24 * time.Hour)
+	usage := map[string]EdgeUsage{
+		edgeUsageKey("memory/x/a", "memory/x/b", "learned"): {
+			Source: "memory/x/a", Target: "memory/x/b", Relationship: "learned",
+			UsageCount: 5, LastUsed: lastUsed,
+		},
+	}
+	link := Link{Target: "memory/x/b", Relationship: "learned"}
+	w := effectiveEdgeWeight("memory/x/a", "memory/x/b", link, cfg, usage)
+	days := time.Since(lastUsed).Hours() / 24
+	decay := math.Exp(-0.003851 * days)
+	expected := 0.4 * (1.0 + 0.2*math.Log(6.0)*decay)
+	if math.Abs(w-expected) > 1e-6 {
+		t.Errorf("180-day decay: weight = %f, expected %f (decay=%.4f)", w, expected, decay)
+	}
+	// Decay at ~180 days with λ=ln(2)/180 should be close to 0.5.
+	if decay < 0.49 || decay > 0.51 {
+		t.Errorf("decay factor at ~180 days = %f, expected ~0.5", decay)
+	}
+}
+
+func TestEffectiveEdgeWeight_Decay_BasePreserved_VeryOldEdge(t *testing.T) {
+	cfg := adaptiveConfig()
+	cfg.AdaptiveEdgeDecayLambda = 0.003851
+	usage := map[string]EdgeUsage{
+		edgeUsageKey("memory/x/a", "memory/x/b", "learned"): {
+			Source: "memory/x/a", Target: "memory/x/b", Relationship: "learned",
+			UsageCount: 1000, LastUsed: time.Now().Add(-10 * 365 * 24 * time.Hour), // 10 years
+		},
+	}
+	link := Link{Target: "memory/x/b", Relationship: "learned"}
+	w := effectiveEdgeWeight("memory/x/a", "memory/x/b", link, cfg, usage)
+	base := 0.4
+	if w < base {
+		t.Errorf("10-year-old edge: weight = %f dropped below base %f", w, base)
+	}
+	// With 10 years of decay the uplift is essentially gone — weight should be very close to base.
+	if w-base > 1e-4 {
+		t.Errorf("10-year-old edge: weight = %f, expected near base %f (residual uplift too high)", w, base)
+	}
+}
+
+func TestEffectiveEdgeWeight_Decay_ZeroLastUsed_NoDecay(t *testing.T) {
+	cfg := adaptiveConfig()
+	cfg.AdaptiveEdgeDecayLambda = 0.003851
+	usage := map[string]EdgeUsage{
+		edgeUsageKey("memory/x/a", "memory/x/b", "learned"): {
+			Source: "memory/x/a", Target: "memory/x/b", Relationship: "learned",
+			UsageCount: 5, // LastUsed is zero value — guard should skip decay
+		},
+	}
+	link := Link{Target: "memory/x/b", Relationship: "learned"}
+	w := effectiveEdgeWeight("memory/x/a", "memory/x/b", link, cfg, usage)
+	expected := 0.4 * (1.0 + 0.2*math.Log(6.0))
+	if math.Abs(w-expected) > 1e-9 {
+		t.Errorf("zero LastUsed: decay should not apply; weight = %f, expected %f", w, expected)
+	}
+}

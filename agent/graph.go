@@ -4,6 +4,7 @@ import (
 	"math"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 // effectiveEdgeWeight resolves the runtime weight for a single Link
@@ -46,9 +47,20 @@ func effectiveEdgeWeight(sourceKey, targetKey string, link Link, cfg Config, usa
 		return effective
 	}
 
-	// Adaptive multiplier: 1 + α × ln(1 + usage_count), capped at AdaptiveEdgeCap.
-	// usage=0 → multiplier=1 (no change), usage grows logarithmically.
-	mult := 1.0 + cfg.AdaptiveEdgeAlpha*math.Log(1.0+float64(u.UsageCount))
+	// Adaptive uplift: α × ln(1 + usage_count), applied above the base weight.
+	// Decay is applied to the uplift only — the base weight is always preserved.
+	// This means the effective weight floor is always the authored/default value;
+	// the adaptive layer can amplify or return to neutral, but never degrades below base.
+	//
+	// With decay (λ > 0): uplift × exp(-λ × days_since_last_use)
+	// At λ=0.003851 (default): 30d→89%, 90d→71%, 180d→50%, 1yr→25%, 2yr→6%.
+	// At λ=0 (disabled): behaves identically to pre-decay formula.
+	uplift := cfg.AdaptiveEdgeAlpha * math.Log(1.0+float64(u.UsageCount))
+	if cfg.AdaptiveEdgeDecayLambda > 0 && !u.LastUsed.IsZero() {
+		days := time.Since(u.LastUsed).Hours() / 24
+		uplift *= math.Exp(-cfg.AdaptiveEdgeDecayLambda * days)
+	}
+	mult := 1.0 + uplift
 	cap := cfg.AdaptiveEdgeCap
 	if cap > 0 && mult > cap {
 		mult = cap

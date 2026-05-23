@@ -298,6 +298,9 @@ func applyScalarOverrides(cfg *Config, s map[string]string) {
 	if v, ok := s["adaptive_edge_cap"]; ok {
 		cfg.AdaptiveEdgeCap = atofOrKeep(v, cfg.AdaptiveEdgeCap)
 	}
+	if v, ok := s["adaptive_edge_decay_lambda"]; ok {
+		cfg.AdaptiveEdgeDecayLambda = atofOrKeep(v, cfg.AdaptiveEdgeDecayLambda)
+	}
 
 	if v, ok := s["retrieval_session_log_enabled"]; ok {
 		cfg.RetrievalSessionLogEnabled = atobOrKeep(v, cfg.RetrievalSessionLogEnabled)

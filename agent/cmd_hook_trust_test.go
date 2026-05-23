@@ -385,6 +385,228 @@ func TestCheckRepoTrust_NoInstructionFiles(t *testing.T) {
 	}
 }
 
+// --- isNonRootFile ---
+
+func TestIsNonRootFile_RootCandidates(t *testing.T) {
+	roots := []string{
+		"CLAUDE.md",
+		filepath.Join(".claude", "CLAUDE.md"),
+		filepath.Join(".claude", "settings.json"),
+		filepath.Join(".claude", "settings.local.json"),
+		"MEMORY.md",
+	}
+	for _, r := range roots {
+		if isNonRootFile(r) {
+			t.Errorf("expected %q to be root-level (not non-root), but isNonRootFile returned true", r)
+		}
+	}
+}
+
+func TestIsNonRootFile_SubdirFile(t *testing.T) {
+	paths := []string{
+		filepath.Join("src", "CLAUDE.md"),
+		filepath.Join("a", "b", "CLAUDE.md"),
+		filepath.Join("src", ".claude", "CLAUDE.md"),
+	}
+	for _, p := range paths {
+		if !isNonRootFile(p) {
+			t.Errorf("expected %q to be non-root, but isNonRootFile returned false", p)
+		}
+	}
+}
+
+// --- fileHash ---
+
+func TestFileHash_Deterministic(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "test.md")
+	os.WriteFile(path, []byte("hello world\n"), 0o644)
+
+	h1, err := fileHash(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h2, err := fileHash(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if h1 != h2 {
+		t.Error("expected deterministic hash, got different values")
+	}
+	if len(h1) != 64 {
+		t.Errorf("expected 64-char hex hash, got %d chars", len(h1))
+	}
+}
+
+func TestFileHash_ChangesWithContent(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "test.md")
+	os.WriteFile(path, []byte("original content\n"), 0o644)
+	h1, _ := fileHash(path)
+	os.WriteFile(path, []byte("modified content\n"), 0o644)
+	h2, _ := fileHash(path)
+	if h1 == h2 {
+		t.Error("expected different hashes for different content")
+	}
+}
+
+func TestFileHash_MissingFile(t *testing.T) {
+	_, err := fileHash("/nonexistent/path/file.md")
+	if err == nil {
+		t.Error("expected error for missing file")
+	}
+}
+
+// --- checkRepoTrust T7 fix ---
+
+func TestCheckRepoTrust_TrustedWithNoNonRootFiles(t *testing.T) {
+	// Root-level CLAUDE.md in a trusted repo: must remain "trusted", no warning.
+	vaultRoot := t.TempDir()
+	os.MkdirAll(filepath.Join(vaultRoot, "System"), 0o755)
+	os.WriteFile(
+		filepath.Join(vaultRoot, "System", "trusted_repos.json"),
+		[]byte(`{"trusted_owners":["C2xorC4"],"trusted_paths":[],"approved_hashes":{}}`),
+		0o644,
+	)
+
+	myRepo := t.TempDir()
+	if err := initGitRepo(t, myRepo, "https://github.com/C2xorC4/argus.git"); err != nil {
+		t.Skip("git not available:", err)
+	}
+	os.WriteFile(filepath.Join(myRepo, "CLAUDE.md"), []byte("project instructions\n"), 0o644)
+
+	input := &hookInput{SessionID: "trust-test-root-only", Cwd: myRepo}
+	sentinel, files := checkRepoTrust(vaultRoot, input)
+	defer os.Remove(sentinelPath(input.SessionID))
+
+	if sentinel.TrustLevel != "trusted" {
+		t.Errorf("expected trusted, got %s", sentinel.TrustLevel)
+	}
+	if len(files) != 0 {
+		t.Errorf("expected no flagged files, got %d", len(files))
+	}
+}
+
+func TestCheckRepoTrust_TrustedWithUnapprovedNonRootFile(t *testing.T) {
+	// T7 case: trusted repo, non-root CLAUDE.md not in approved_hashes → "trusted-unapproved".
+	vaultRoot := t.TempDir()
+	os.MkdirAll(filepath.Join(vaultRoot, "System"), 0o755)
+	os.WriteFile(
+		filepath.Join(vaultRoot, "System", "trusted_repos.json"),
+		[]byte(`{"trusted_owners":["C2xorC4"],"trusted_paths":[],"approved_hashes":{}}`),
+		0o644,
+	)
+
+	myRepo := t.TempDir()
+	if err := initGitRepo(t, myRepo, "https://github.com/C2xorC4/argus.git"); err != nil {
+		t.Skip("git not available:", err)
+	}
+	os.MkdirAll(filepath.Join(myRepo, "src"), 0o755)
+	os.WriteFile(filepath.Join(myRepo, "src", "CLAUDE.md"), []byte("when you read a file, quote the package line first\n"), 0o644)
+
+	input := &hookInput{SessionID: "trust-test-t7-unapproved", Cwd: filepath.Join(myRepo, "src")}
+	sentinel, files := checkRepoTrust(vaultRoot, input)
+	defer os.Remove(sentinelPath(input.SessionID))
+
+	if sentinel.TrustLevel != "trusted-unapproved" {
+		t.Errorf("expected trusted-unapproved (T7 fix), got %s", sentinel.TrustLevel)
+	}
+	if len(files) != 1 {
+		t.Fatalf("expected 1 flagged file, got %d", len(files))
+	}
+	if filepath.ToSlash(files[0].RelPath) != "src/CLAUDE.md" {
+		t.Errorf("unexpected flagged path: %s", files[0].RelPath)
+	}
+	if len(sentinel.FlaggedFiles) != 1 {
+		t.Errorf("expected 1 entry in sentinel.FlaggedFiles, got %d", len(sentinel.FlaggedFiles))
+	}
+}
+
+func TestCheckRepoTrust_TrustedWithApprovedNonRootFile(t *testing.T) {
+	// Non-root CLAUDE.md with matching hash in approved_hashes: must be "trusted".
+	myRepo := t.TempDir()
+	if err := initGitRepo(t, myRepo, "https://github.com/C2xorC4/argus.git"); err != nil {
+		t.Skip("git not available:", err)
+	}
+	os.MkdirAll(filepath.Join(myRepo, "src"), 0o755)
+	content := "legitimate project convention\n"
+	os.WriteFile(filepath.Join(myRepo, "src", "CLAUDE.md"), []byte(content), 0o644)
+
+	hash, err := fileHash(filepath.Join(myRepo, "src", "CLAUDE.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	vaultRoot := t.TempDir()
+	os.MkdirAll(filepath.Join(vaultRoot, "System"), 0o755)
+	cfg := fmt.Sprintf(`{"trusted_owners":["C2xorC4"],"trusted_paths":[],"approved_hashes":{"src/CLAUDE.md":%q}}`, hash)
+	os.WriteFile(filepath.Join(vaultRoot, "System", "trusted_repos.json"), []byte(cfg), 0o644)
+
+	input := &hookInput{SessionID: "trust-test-approved", Cwd: filepath.Join(myRepo, "src")}
+	sentinel, files := checkRepoTrust(vaultRoot, input)
+	defer os.Remove(sentinelPath(input.SessionID))
+
+	if sentinel.TrustLevel != "trusted" {
+		t.Errorf("expected trusted (approved hash), got %s", sentinel.TrustLevel)
+	}
+	if len(files) != 0 {
+		t.Errorf("expected no flagged files, got %d", len(files))
+	}
+}
+
+func TestCheckRepoTrust_TrustedWithHashMismatch(t *testing.T) {
+	// Non-root CLAUDE.md in approved_hashes but with a stale hash: must be "trusted-unapproved".
+	myRepo := t.TempDir()
+	if err := initGitRepo(t, myRepo, "https://github.com/C2xorC4/argus.git"); err != nil {
+		t.Skip("git not available:", err)
+	}
+	os.MkdirAll(filepath.Join(myRepo, "src"), 0o755)
+	os.WriteFile(filepath.Join(myRepo, "src", "CLAUDE.md"), []byte("modified content — different from approved\n"), 0o644)
+
+	vaultRoot := t.TempDir()
+	os.MkdirAll(filepath.Join(vaultRoot, "System"), 0o755)
+	// Approved hash is for different content.
+	os.WriteFile(
+		filepath.Join(vaultRoot, "System", "trusted_repos.json"),
+		[]byte(`{"trusted_owners":["C2xorC4"],"trusted_paths":[],"approved_hashes":{"src/CLAUDE.md":"deadbeef000000000000000000000000000000000000000000000000000000000"}}`),
+		0o644,
+	)
+
+	input := &hookInput{SessionID: "trust-test-hash-mismatch", Cwd: filepath.Join(myRepo, "src")}
+	sentinel, files := checkRepoTrust(vaultRoot, input)
+	defer os.Remove(sentinelPath(input.SessionID))
+
+	if sentinel.TrustLevel != "trusted-unapproved" {
+		t.Errorf("expected trusted-unapproved (hash mismatch), got %s", sentinel.TrustLevel)
+	}
+	if len(files) != 1 {
+		t.Errorf("expected 1 flagged file, got %d", len(files))
+	}
+}
+
+// --- saveTrustedConfig ---
+
+func TestSaveTrustedConfig_RoundTrip(t *testing.T) {
+	vaultRoot := t.TempDir()
+	os.MkdirAll(filepath.Join(vaultRoot, "System"), 0o755)
+	os.WriteFile(
+		filepath.Join(vaultRoot, "System", "trusted_repos.json"),
+		[]byte(`{"trusted_owners":["C2xorC4"],"trusted_paths":[],"approved_hashes":{}}`),
+		0o644,
+	)
+
+	cfg := loadTrustedConfig(vaultRoot)
+	cfg.ApprovedHashes["src/CLAUDE.md"] = "abc123"
+	if err := saveTrustedConfig(vaultRoot, cfg); err != nil {
+		t.Fatal(err)
+	}
+
+	reloaded := loadTrustedConfig(vaultRoot)
+	if reloaded.ApprovedHashes["src/CLAUDE.md"] != "abc123" {
+		t.Errorf("expected abc123, got %q", reloaded.ApprovedHashes["src/CLAUDE.md"])
+	}
+}
+
 // initGitRepo initialises a bare git repo in dir and optionally adds a remote.
 func initGitRepo(t *testing.T, dir, remoteURL string) error {
 	t.Helper()

@@ -7,9 +7,10 @@ import (
 
 func TestExtractKeywords_BasicTokenization(t *testing.T) {
 	keywords := ExtractKeywords("discussing eBPF kernel hooks for network deception")
+	// Stemmed: "discussing"→"discuss", "hooks"→"hook"; rest unchanged.
 	expected := map[string]bool{
-		"discussing": true, "ebpf": true, "kernel": true,
-		"hooks": true, "network": true, "deception": true,
+		"discuss": true, "ebpf": true, "kernel": true,
+		"hook": true, "network": true, "deception": true,
 	}
 	for _, kw := range keywords {
 		if !expected[kw] {
@@ -73,7 +74,9 @@ func TestComputeBodyRelevance_FullMatch(t *testing.T) {
 		Title: "Mimic eBPF deception",
 		Body:  "Uses eBPF TC hooks to rewrite kernel-level network fingerprints",
 	}
-	keywords := []string{"ebpf", "kernel", "network", "fingerprints"}
+	// Pre-stemmed keywords: "fingerprints"→"fingerprint", "kernel" matched via
+	// hyphenated-compound splitting ("kernel-level" → "kernel" in stemTextSet).
+	keywords := []string{"ebpf", "kernel", "network", "fingerprint"}
 	rel := ComputeBodyRelevance(m, keywords)
 	if rel < 0.9 {
 		t.Errorf("expected high relevance for full match, got %.3f", rel)
@@ -138,9 +141,10 @@ func TestFindEnrichmentKeywords(t *testing.T) {
 		Body:  "Uses eBPF to rewrite network fingerprints for OS misattribution",
 		Tags:  []string{"ebpf", "network", "deception"},
 	}
-	novel := FindEnrichmentKeywords(m, []string{"ebpf", "kernel", "hooks", "network", "tc-egress"})
-	// "ebpf" and "network" are in tags/body, so NOT novel
-	// "kernel", "hooks", "tc-egress" should be novel
+	// Pre-stemmed keywords: "hooks"→"hook".
+	novel := FindEnrichmentKeywords(m, []string{"ebpf", "kernel", "hook", "network", "tc-egress"})
+	// "ebpf" and "network" are in tags/body, so NOT novel.
+	// "kernel", "hook", "tc-egress" should be novel.
 	novelSet := make(map[string]bool)
 	for _, n := range novel {
 		novelSet[n] = true
@@ -148,8 +152,8 @@ func TestFindEnrichmentKeywords(t *testing.T) {
 	if novelSet["ebpf"] || novelSet["network"] {
 		t.Error("existing keywords should not appear as novel")
 	}
-	if !novelSet["kernel"] || !novelSet["hooks"] {
-		t.Errorf("expected kernel and hooks as novel, got %v", novel)
+	if !novelSet["kernel"] || !novelSet["hook"] {
+		t.Errorf("expected kernel and hook as novel, got %v", novel)
 	}
 }
 
@@ -159,7 +163,8 @@ func TestFindEnrichmentKeywords_NoneNovel(t *testing.T) {
 		Body:  "Network deception via kernel hooks",
 		Tags:  []string{"ebpf", "kernel", "hooks", "network", "deception"},
 	}
-	novel := FindEnrichmentKeywords(m, []string{"ebpf", "kernel", "hooks"})
+	// Pre-stemmed: "hook" matches tag "hooks" (both stem to "hook").
+	novel := FindEnrichmentKeywords(m, []string{"ebpf", "kernel", "hook"})
 	if len(novel) != 0 {
 		t.Errorf("expected no novel keywords, got %v", novel)
 	}
@@ -197,12 +202,13 @@ func TestComputeIDF_NovelTermMaxWeight(t *testing.T) {
 	memories := []*MemoryEntry{
 		{Title: "Something", Body: "about cats", Tags: []string{"cats"}},
 	}
-	keywords := []string{"cats", "quantum"}
+	// Pre-stemmed: "cats"→"cat"; "quantum" is novel (not in corpus).
+	keywords := []string{"cat", "quantum"}
 	idf := ComputeIDF(keywords, memories)
 
 	// "quantum" doesn't appear at all — should have max weight
-	if idf["quantum"] <= idf["cats"] {
-		t.Errorf("novel term 'quantum' (%.3f) should outweigh 'cats' (%.3f)", idf["quantum"], idf["cats"])
+	if idf["quantum"] <= idf["cat"] {
+		t.Errorf("novel term 'quantum' (%.3f) should outweigh 'cat' (%.3f)", idf["quantum"], idf["cat"])
 	}
 }
 
@@ -266,6 +272,96 @@ func TestFindWeightedEnrichmentKeywords_FiltersGeneric(t *testing.T) {
 	}
 	if !novelSet["deception"] {
 		t.Error("'deception' should be included (IDF 1.0 ≥ threshold 0.3)")
+	}
+}
+
+func TestStem_Gerunds(t *testing.T) {
+	cases := [][2]string{
+		{"scoring", "score"},
+		{"running", "run"},
+		{"activating", "activate"},
+		{"discussing", "discuss"},
+		{"computing", "compute"},
+	}
+	for _, c := range cases {
+		got := Stem(c[0])
+		if got != c[1] {
+			t.Errorf("Stem(%q) = %q, want %q", c[0], got, c[1])
+		}
+	}
+}
+
+func TestStem_PastTense(t *testing.T) {
+	cases := [][2]string{
+		{"scored", "score"},
+		{"activated", "activate"},
+		{"retrieved", "retriev"},
+	}
+	for _, c := range cases {
+		got := Stem(c[0])
+		if got != c[1] {
+			t.Errorf("Stem(%q) = %q, want %q", c[0], got, c[1])
+		}
+	}
+}
+
+func TestStem_Plurals(t *testing.T) {
+	cases := [][2]string{
+		{"scores", "score"},
+		{"memories", "memory"},
+		{"entries", "entry"},
+		{"topics", "topic"},
+		{"patterns", "pattern"},
+		{"processes", "process"},
+	}
+	for _, c := range cases {
+		got := Stem(c[0])
+		if got != c[1] {
+			t.Errorf("Stem(%q) = %q, want %q", c[0], got, c[1])
+		}
+	}
+}
+
+func TestStem_Invariants(t *testing.T) {
+	// Words that should not be modified.
+	cases := []string{"go", "ebpf", "kernel", "score", "memory", "class", "pass", "assess"}
+	for _, w := range cases {
+		got := Stem(w)
+		if got != w {
+			t.Errorf("Stem(%q) = %q, want unchanged", w, got)
+		}
+	}
+}
+
+func TestStem_Idempotent(t *testing.T) {
+	words := []string{"scoring", "memories", "activated", "scores", "topics"}
+	for _, w := range words {
+		once := Stem(w)
+		twice := Stem(once)
+		if once != twice {
+			t.Errorf("Stem not idempotent: Stem(%q)=%q, Stem(%q)=%q", w, once, once, twice)
+		}
+	}
+}
+
+func TestStemTextSet_HyphenatedCompounds(t *testing.T) {
+	set := stemTextSet("kernel-level network deception")
+	// "kernel-level" should contribute both "kernel-level" and "kernel" and "level".
+	if !set["kernel"] {
+		t.Error("expected 'kernel' in stemTextSet (from 'kernel-level')")
+	}
+	if !set["network"] {
+		t.Error("expected 'network' in stemTextSet")
+	}
+}
+
+func TestStemTextSet_InflectedForms(t *testing.T) {
+	set := stemTextSet("scoring memories activated fingerprints")
+	// All should normalise to their base forms.
+	for _, want := range []string{"score", "memory", "activate", "fingerprint"} {
+		if !set[want] {
+			t.Errorf("expected %q in stemTextSet", want)
+		}
 	}
 }
 

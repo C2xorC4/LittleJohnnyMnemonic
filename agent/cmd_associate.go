@@ -130,18 +130,18 @@ func cmdAssociate(vaultRoot string, args []string) {
 			continue
 		}
 
-		// Find specific matches for explanation (with IDF weight annotation)
+		// Find specific matches for explanation (keywords are pre-stemmed; match symmetrically).
 		var tagHits, bodyHits []string
-		tagSet := make(map[string]bool)
+		stemmedTags := make(map[string]bool, len(m.Tags))
 		for _, t := range m.Tags {
-			tagSet[strings.ToLower(t)] = true
+			stemmedTags[Stem(strings.ToLower(t))] = true
 		}
-		searchable := strings.ToLower(m.Title + " " + m.Body)
+		bodySet := stemTextSet(m.Title + " " + m.Body)
 
 		for _, kw := range keywords {
-			if tagSet[kw] {
+			if stemmedTags[kw] {
 				tagHits = append(tagHits, kw)
-			} else if containsWord(searchable, kw) {
+			} else if bodySet[kw] {
 				bodyHits = append(bodyHits, kw)
 			}
 		}

@@ -367,8 +367,16 @@
   // ── Recall smooth toggle ─────────────────────────────────────────
   let recallSmoothed = true; // default: 7-day rolling average
 
+  // 2026-05-14 was a partial recording day; exclude it so the rolling average
+  // and per-day counts aren't skewed by an incomplete first day.
+  const RECALL_CHART_START = '2026-05-15';
+
+  function recallChartData(data) {
+    return ((data || liveData).recall_by_day || []).filter(p => p.date >= RECALL_CHART_START);
+  }
+
   function redrawRecall(data) {
-    const recallData   = (data || liveData).recall_by_day || [];
+    const recallData   = recallChartData(data);
     const recallCanvas = document.getElementById('chart-recall');
     if (!recallCanvas) return;
     const allTypes = [...new Set(recallData.flatMap(p => Object.keys(p.counts || {})))].sort();
@@ -496,7 +504,7 @@
 
     const bodyHitsCanvas = document.getElementById('chart-body-hits');
     if (bodyHitsCanvas) {
-      const recallData = (d.recall_by_day || []);
+      const recallData = recallChartData(d);
       // Draw avg_body_hits as a bar chart — each bar = mean keyword hits per recalled memory that day.
       // 0.0 means all retrievals were tag-only (no body contact); higher values indicate
       // prompt keywords found in memory body text. Semantic framing memories score 0 regardless

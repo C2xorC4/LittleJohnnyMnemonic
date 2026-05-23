@@ -228,9 +228,10 @@ type Config struct {
 	// See System/AssociativeMap.md for the design and the
 	// averages-collapse-context tradeoff.
 	AdaptiveEdgeWeightingEnabled bool     `yaml:"adaptive_edge_weighting_enabled"`
-	AdaptiveEdgeScope            []string `yaml:"adaptive_edge_scope"` // relationship types eligible; pilot default = ["learned"]
-	AdaptiveEdgeAlpha            float64  `yaml:"adaptive_edge_alpha"` // log multiplier coefficient
-	AdaptiveEdgeCap              float64  `yaml:"adaptive_edge_cap"`   // max effective multiplier vs base weight
+	AdaptiveEdgeScope            []string `yaml:"adaptive_edge_scope"`         // relationship types eligible; pilot default = ["learned"]
+	AdaptiveEdgeAlpha            float64  `yaml:"adaptive_edge_alpha"`         // log multiplier coefficient
+	AdaptiveEdgeCap              float64  `yaml:"adaptive_edge_cap"`           // max effective multiplier vs base weight
+	AdaptiveEdgeDecayLambda      float64  `yaml:"adaptive_edge_decay_lambda"`  // temporal decay constant λ; uplift × exp(-λ × days); 0 = no decay
 
 	// Retrieval session logging — required for adaptive reinforcement.
 	// Off by default; persists session ID + loaded memory list per retrieve
@@ -397,6 +398,7 @@ func DefaultConfig() Config {
 		AdaptiveEdgeScope:            []string{"learned"},
 		AdaptiveEdgeAlpha:            0.2,
 		AdaptiveEdgeCap:              2.0,
+		AdaptiveEdgeDecayLambda:      0.003851, // 180-day half-life: ln(2)/180
 
 		RetrievalSessionLogEnabled:       false,
 		RetrievalSessionLogRetentionDays: 14,

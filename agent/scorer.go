@@ -42,10 +42,10 @@ func ComputeRelevance(m *MemoryEntry, contextTags []string) float64 {
 	matches := 0
 	tagSet := make(map[string]bool)
 	for _, t := range m.Tags {
-		tagSet[strings.ToLower(t)] = true
+		tagSet[Stem(strings.ToLower(t))] = true
 	}
 	for _, ct := range contextTags {
-		if tagSet[strings.ToLower(ct)] {
+		if tagSet[Stem(strings.ToLower(ct))] {
 			matches++
 		}
 	}

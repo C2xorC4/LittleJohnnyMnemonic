@@ -160,9 +160,11 @@ func runSessionStart(vaultRoot string, input *hookInput) {
 
 	// Repo trust check — runs before memory loading so <repo-trust-warning>
 	// appears first in session context, before <memory-context>.
-	if sentinel, files := checkRepoTrust(vaultRoot, input); sentinel.TrustLevel == "untrusted" {
+	if sentinel, files := checkRepoTrust(vaultRoot, input); sentinel.TrustLevel == "untrusted" || sentinel.TrustLevel == "trusted-unapproved" {
 		writeTrustWarning(os.Stdout, sentinel, files)
-		bufferTrustDetection(vaultRoot, sentinel, files)
+		if sentinel.TrustLevel == "untrusted" {
+			bufferTrustDetection(vaultRoot, sentinel, files)
+		}
 	}
 
 	// Spawn consolidation in the background if buffer is backed up. Detached
@@ -273,7 +275,7 @@ func runUserPromptSubmit(vaultRoot string, input *hookInput) {
 		Enrichment:   false,
 	}
 
-	results, _, _, err := AssociateMemories(vaultRoot, prompt, opts)
+	results, keywords, _, err := AssociateMemories(vaultRoot, prompt, opts)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "[jm hook] user-prompt-submit: %v\n", err)
 		return
@@ -293,6 +295,30 @@ func runUserPromptSubmit(vaultRoot string, input *hookInput) {
 
 	writeRecallMetrics(vaultRoot, results, input.SessionID, len(prompt))
 	writePromptAssociationContext(os.Stdout, results)
+
+	// Wire retrieval session logging for the adaptive edge-weighting substrate.
+	// Hook-based retrieval is the hot path for all conversational usage; without
+	// this call, retrieval_sessions.jsonl never accumulates data and edge weights
+	// can never update from real usage patterns.
+	hookCfg := LoadConfig(vaultRoot)
+	if hookCfg.RetrievalSessionLogEnabled && len(results) > 0 {
+		loaded := make([]string, 0, len(results))
+		for _, r := range results {
+			loaded = append(loaded, MemoryKey(r.Memory))
+		}
+		session := RetrievalSession{
+			SessionID:    GenerateSessionID(),
+			Timestamp:    time.Now(),
+			Loaded:       loaded,
+			QueryContext: prompt,
+			QueryTags:    keywords,
+		}
+		if err := AppendRetrievalSession(vaultRoot, session); err != nil {
+			fmt.Fprintf(os.Stderr, "[jm hook] retrieval session: %v\n", err)
+		} else if hookCfg.RetrievalSessionLogRetentionDays > 0 {
+			_, _ = PruneRetrievalSessions(vaultRoot, hookCfg.RetrievalSessionLogRetentionDays)
+		}
+	}
 
 	surfaceFreshDaydreamsToHook(vaultRoot, prompt, input.SessionID, time.Now())
 

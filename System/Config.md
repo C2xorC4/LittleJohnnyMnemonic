@@ -208,6 +208,21 @@ adaptive_edge_alpha: 0.2
 # Prevents runaway reinforcement on edges that fire repeatedly in a
 # tight time window.
 adaptive_edge_cap: 2.0
+
+# Temporal decay constant for the adaptive uplift. Only the citation-driven
+# uplift above the base weight decays — the base weight is always preserved.
+# Formula: effective = base × (1 + alpha × ln(1 + usage_count) × exp(-λ × days_since_use))
+#
+# λ = ln(2) / half_life_days. Reference points for λ = 0.003851 (180-day default):
+#   30 days  → 89% of uplift retained
+#   90 days  → 71%
+#   180 days → 50%
+#   1 year   → 25%
+#   2 years  →  6%
+#
+# Set to 0 to disable decay (edges accumulate permanently — old behavior).
+# Citations reset the decay clock by updating last_used.
+adaptive_edge_decay_lambda: 0.003851
 ```
 
 Reset path: delete `Metrics/edge_usage.jsonl` and effective weights
