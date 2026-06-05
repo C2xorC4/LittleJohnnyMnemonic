@@ -24,6 +24,29 @@ func cmdStatus(vaultRoot string, args []string) {
 	fmt.Printf("╚%s╝\n", strings.Repeat("═", boxWidth))
 	fmt.Println()
 
+	// Machine registry summary
+	if reg, _ := LoadMachineRegistry(vaultRoot); reg != nil {
+		currentID, sshCount := "", 0
+		for id, m := range reg.Machines {
+			if m.Current {
+				currentID = id
+			}
+			if m.SSH != nil && m.Status != "unconfigured" {
+				sshCount++
+			}
+		}
+		if currentID != "" {
+			m := reg.Machines[currentID]
+			sshNote := ""
+			if sshCount > 0 {
+				sshNote = fmt.Sprintf(" — %d SSH target(s) in registry", sshCount)
+			}
+			fmt.Printf("Machine: %s (%s, %s, elevation: %s)%s\n",
+				currentID, m.Platform, m.User, m.Elevation, sshNote)
+			fmt.Println()
+		}
+	}
+
 	// Buffer status
 	bufferEntries, _ := LoadAllBufferEntries(vaultRoot)
 	bufferFill := float64(len(bufferEntries)) / float64(cfg.BufferThreshold) * 100
@@ -66,6 +89,7 @@ func cmdStatus(vaultRoot string, args []string) {
 	var oldestAccess time.Time
 	staleCount := 0
 
+	dormantCount := 0
 	for _, m := range memories {
 		typeCounts[m.Type]++
 		if m.TrainingOverride {
@@ -77,7 +101,15 @@ func cmdStatus(vaultRoot string, args []string) {
 		}
 		daysSince := now.Sub(m.LastAccessed).Hours() / 24
 		if daysSince > float64(cfg.StaleThresholdDays) {
-			staleCount++
+			// Only Project memories are subject to time-based confidence decay
+			// (matches the Phase 3 decay pass in consolidation). Knowledge,
+			// Semantic, User, and Feedback memories are topic-dormant, not stale
+			// — they remain valid and will resurface when their domain returns.
+			if m.Type == TypeProject {
+				staleCount++
+			} else {
+				dormantCount++
+			}
 		}
 		if oldestAccess.IsZero() || m.LastAccessed.Before(oldestAccess) {
 			oldestAccess = m.LastAccessed
@@ -113,10 +145,14 @@ func cmdStatus(vaultRoot string, args []string) {
 	// Health indicators
 	fmt.Println("\nHealth:")
 	if staleCount > 0 {
-		fmt.Printf("         ⚠  %d memories stale (>%d days without access)\n",
+		fmt.Printf("         ⚠  %d project memories stale (>%d days — confidence decay pending)\n",
 			staleCount, cfg.StaleThresholdDays)
 	} else {
-		fmt.Println("         ✓ No stale memories")
+		fmt.Println("         ✓ No project memories stale")
+	}
+	if dormantCount > 0 {
+		fmt.Printf("         ·  %d memories dormant (>%d days, topic-protected — no decay)\n",
+			dormantCount, cfg.StaleThresholdDays)
 	}
 
 	if unlinked > 0 && len(memories) > 3 {

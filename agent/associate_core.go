@@ -38,7 +38,7 @@ func AssociateMemories(
 		opts.EnrichmentMinWeight = 0.3
 	}
 
-	cfg := DefaultConfig()
+	cfg := LoadConfig(vaultRoot)
 	now := time.Now()
 
 	memories, err := LoadAllMemories(vaultRoot)
@@ -64,12 +64,7 @@ func AssociateMemories(
 		// threshold, the access will resurrect it via UnarchiveOnAccess
 		// in the write-back loop below.
 
-		var activation float64
-		if m.Type == TypeKnowledge {
-			activation = 1.0
-		} else {
-			activation = ComputeActivation(m, now)
-		}
+		activation := ActivationForType(m, now, cfg)
 		tagRel := ComputeWeightedTagRelevance(m, keywords, idf)
 		bodyRel := ComputeWeightedBodyRelevance(m, keywords, idf)
 		combinedRel := tagRel*0.6 + bodyRel*0.4

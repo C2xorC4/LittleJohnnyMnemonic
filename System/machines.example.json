@@ -1,0 +1,94 @@
+{
+  "_schema": "LJM Machine & Tooling Registry v1 — copy this file to machines.json (gitignored) and fill in real values. machines.json is never committed.",
+  "schema_version": 1,
+  "machines": {
+    "local": {
+      "display_name": "Your primary workstation",
+      "platform": "windows",
+      "current": true,
+      "hostname": "YOUR_HOSTNAME",
+      "user": "YOUR_USERNAME",
+      "elevation": "prompt",
+      "elevation_note": "UAC prompt available but Claude cannot trigger it — request user to elevate manually if an install requires admin.",
+      "notes": "Primary day-to-day machine. Set current: true on whichever machine this config lives on."
+    },
+    "remote-linux": {
+      "display_name": "Remote Linux research box",
+      "platform": "linux",
+      "hostname": "YOUR_HOSTNAME_OR_FQDN",
+      "ip": "YOUR_STATIC_IP",
+      "user": "YOUR_SSH_USER",
+      "elevation": "none",
+      "elevation_note": "User-only. No sudo for Claude sessions. Request user to elevate manually if install requires root.",
+      "ssh": {
+        "method": "windows-native-openssh",
+        "binary": "C:\\Windows\\System32\\OpenSSH\\ssh.exe",
+        "key": "C:\\Users\\YOUR_USERNAME\\.ssh\\YOUR_KEY_FILE",
+        "flags": ["-o", "StrictHostKeyChecking=no"],
+        "notes": "CRITICAL: Git Bash SSH may have libcrypto incompatibility with certain key types — always prefer Windows native ssh.exe."
+      },
+      "notes": "Replace with machine purpose and typical use cases."
+    },
+    "lab-full-access": {
+      "display_name": "Isolated lab / test environment",
+      "platform": "linux",
+      "hostname": "YOUR_LAB_HOSTNAME_OR_IP",
+      "user": "YOUR_LAB_USER",
+      "elevation": "full",
+      "elevation_note": "Full root/sudo available. Claude can install and elevate freely.",
+      "ssh": {
+        "method": "windows-native-openssh",
+        "binary": "C:\\Windows\\System32\\OpenSSH\\ssh.exe",
+        "key": "C:\\Users\\YOUR_USERNAME\\.ssh\\YOUR_LAB_KEY",
+        "flags": ["-p", "22", "-o", "StrictHostKeyChecking=no"],
+        "notes": "Replace port 22 with actual port if non-standard."
+      },
+      "notes": "Isolated test environment, only online for testing. Lower data sensitivity."
+    },
+    "wsl": {
+      "display_name": "WSL on local",
+      "platform": "linux-wsl",
+      "user": "YOUR_WSL_USER",
+      "elevation": "none",
+      "elevation_note": "User-only within WSL. No sudo for Claude sessions.",
+      "notes": "Linux environment on the local machine. Distro: YOUR_DISTRO"
+    },
+    "unconfigured-example": {
+      "display_name": "Placeholder for a not-yet-configured machine",
+      "platform": "windows",
+      "status": "unconfigured",
+      "user": "YOUR_USERNAME",
+      "elevation": "none",
+      "elevation_note": "Fill in actual elevation policy.",
+      "notes": "Entries with status: unconfigured are skipped in routing decisions."
+    }
+  },
+  "tooling": {
+    "example-binary": {
+      "description": "Example binary tool — replace with real tool",
+      "install": "manual",
+      "type": "executable",
+      "machines": {
+        "local": {
+          "path": "C:\\Path\\To\\Tool.exe",
+          "notes": "Any quirks, aliases, or detection-evasion notes"
+        }
+      }
+    },
+    "example-mcp-server": {
+      "description": "Example MCP server — replace with real tool",
+      "install": "manual",
+      "type": "mcp",
+      "machines": {
+        "local": {
+          "path": "builtin",
+          "notes": "Available via Claude Code MCP integration (configured in .claude/)"
+        },
+        "remote-linux": {
+          "path": "/opt/mcp-server-binary",
+          "notes": "Headless install; SSH tunnel to connect"
+        }
+      }
+    }
+  }
+}

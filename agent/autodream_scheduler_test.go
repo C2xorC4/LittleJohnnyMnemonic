@@ -68,13 +68,18 @@ func TestInstallAutodreamSchedule_BuildsCorrectSchtasksCommand(t *testing.T) {
 	if indexOf(args, "/RU") >= 0 {
 		t.Errorf("must NOT include /RU (causes Access Denied without admin); got %v", args)
 	}
-	// /TR value should end with " autodream"
+	// /TR value must run "autodream" inside a hidden PowerShell window so
+	// neither jm.exe nor the claude subprocess flashes a console.
 	idx := indexOf(args, "/TR")
 	if idx < 0 || idx+1 >= len(args) {
 		t.Fatalf("missing /TR")
 	}
-	if !strings.HasSuffix(args[idx+1], " autodream") {
-		t.Errorf("/TR value %q should end with ' autodream'", args[idx+1])
+	trVal := args[idx+1]
+	if !strings.Contains(trVal, "autodream") {
+		t.Errorf("/TR value %q should contain 'autodream'", trVal)
+	}
+	if !strings.Contains(trVal, "-WindowStyle Hidden") {
+		t.Errorf("/TR value %q should use PowerShell -WindowStyle Hidden to suppress console flash", trVal)
 	}
 }
 

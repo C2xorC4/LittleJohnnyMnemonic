@@ -87,6 +87,25 @@ func ComputeSurpriseBonus(m *MemoryEntry, cfg Config) float64 {
 	return m.SurpriseAtEncoding * cfg.SurpriseBonusWeight
 }
 
+// ActivationForType returns the effective activation for a memory, applying a
+// per-type floor so durable types (user, feedback, semantic) don't become
+// unretrievable during topic-dormant periods. Types representing ephemeral
+// context (project, reference) have a floor of 0.0 — their full decay is
+// intentional. The floor is configured via ActivationFloors in Config.
+func ActivationForType(m *MemoryEntry, now time.Time, cfg Config) float64 {
+	var raw float64
+	if m.Type == TypeKnowledge {
+		raw = 1.0
+	} else {
+		raw = ComputeActivation(m, now)
+	}
+	floor := cfg.ActivationFloors[string(m.Type)]
+	if raw < floor {
+		return floor
+	}
+	return raw
+}
+
 // ScoreMemory computes the full retrieval score for a single memory.
 //
 //	Standard:  score = activation × relevance × confidence + surprise_bonus
@@ -99,17 +118,8 @@ func ScoreMemory(m *MemoryEntry, contextTags []string, queryIntent string, cfg C
 	confidence := m.Confidence
 	surprise := ComputeSurpriseBonus(m, cfg)
 
-	var activation, total float64
-
-	if m.Type == TypeKnowledge {
-		// Knowledge entries don't decay with time — scored purely on
-		// relevance and confidence. Activation is fixed at 1.0.
-		activation = 1.0
-		total = relevance*confidence + surprise
-	} else {
-		activation = ComputeActivation(m, now)
-		total = activation*relevance*confidence + surprise
-	}
+	activation := ActivationForType(m, now, cfg)
+	total := activation*relevance*confidence + surprise
 
 	return ScoredMemory{
 		Memory:     m,

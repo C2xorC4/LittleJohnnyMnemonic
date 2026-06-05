@@ -110,6 +110,26 @@ decay_rates:
   training_override: 0.1
 ```
 
+## Activation Floors
+
+Minimum activation value applied during retrieval scoring, per type.
+Prevents the `activation × relevance × confidence` formula from going negative
+for durable types during topic-dormant periods. Types representing ephemeral
+context (`project`, `reference`) have a floor of 0.0 — their full time-based
+decay is intentional.
+
+```yaml
+activation_floors:
+  knowledge: 1.0          # no time decay — fixed
+  episodic: 0.7           # session summaries — most durable
+  training_override: 0.6  # immune to archival
+  user: 0.4               # durable profile data
+  feedback: 0.4           # durable behavioral rules
+  semantic: 0.3           # topic-dormant abstractions — retrievable when relevant
+  project: 0.0            # ephemeral context — full decay intended
+  reference: 0.0          # can go stale — full decay intended
+```
+
 ## Progressive Compression Thresholds
 
 Days since `last_accessed` before each fidelity transition fires. Each

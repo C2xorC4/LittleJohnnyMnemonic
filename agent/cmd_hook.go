@@ -549,6 +549,10 @@ func writeSessionStartContext(w io.Writer, vaultRoot string, memories []*MemoryE
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, systemStateSummary(vaultRoot))
 	fmt.Fprintln(w)
+	if block := machinesSummaryBlock(vaultRoot); block != "" {
+		fmt.Fprintln(w, block)
+		fmt.Fprintln(w)
+	}
 
 	byType := make(map[MemoryType][]*MemoryEntry)
 	for _, m := range memories {

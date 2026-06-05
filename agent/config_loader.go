@@ -52,6 +52,9 @@ func LoadConfig(vaultRoot string) Config {
 	if vals, ok := overrides["profile_decay_rates"]; ok && len(vals) > 0 {
 		cfg.ProfileDecayRates = vals
 	}
+	if vals, ok := overrides["activation_floors"]; ok && len(vals) > 0 {
+		cfg.ActivationFloors = vals
+	}
 	if vals, ok := overrides["auto_daydream_active_seed_sources"]; ok && len(vals) > 0 {
 		cfg.AutoDaydreamActiveSeedSources = vals
 	}

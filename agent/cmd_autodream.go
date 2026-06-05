@@ -871,6 +871,9 @@ func invokeClaudeCLIDaydream(vaultRoot string) AutodreamInvoker {
 		// env var is inherited by the spawned `claude` process and read
 		// by `jm hook session-start` / `jm hook user-prompt-submit`.
 		cmd.Env = append(os.Environ(), "LJM_AUTODREAM_INVOCATION=1")
+		// Suppress console window on Windows (CREATE_NO_WINDOW). On Unix,
+		// detach from the controlling terminal via Setsid.
+		detachSysProcAttr(cmd)
 		var stdout, stderr bytes.Buffer
 		cmd.Stdout = &stdout
 		cmd.Stderr = &stderr

@@ -181,6 +181,7 @@ Current assignments:
 | Prefix | Book |
 |---|---|
 | `acw` | The Art of Cyberwarfare (DiMaggio, 2022) |
+| `gke` | A Guide to Kernel Exploitation: Attacking the Core (Perla & Oldani, 2011) |
 | `ee` | Evasion Engineering (Chow & LaSalvia, 2026) |
 | `eedr` | Evading EDR (Hand, 2024) |
 | `ootm` | Out of the Mountains (Kilcullen, 2013) |

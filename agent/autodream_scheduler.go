@@ -73,12 +73,15 @@ func installAutodreamSchedule(intervalMinutes int) (string, error) {
 	}
 	exe = filepath.Clean(exe)
 
+	// Wrap in PowerShell -WindowStyle Hidden so neither jm.exe nor the
+	// claude subprocess it spawns gets a visible console window.
+	tr := `powershell.exe -WindowStyle Hidden -NonInteractive -Command "& '` + exe + `' autodream"`
 	out, err := schtasksRunner(
 		"/Create",
 		"/SC", "MINUTE",
 		"/MO", strconv.Itoa(intervalMinutes),
 		"/TN", autodreamTaskName,
-		"/TR", exe+" autodream",
+		"/TR", tr,
 		"/IT",
 		"/F",
 	)

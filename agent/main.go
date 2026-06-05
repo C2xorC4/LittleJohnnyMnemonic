@@ -38,6 +38,7 @@ Commands:
   graph        Export interactive HTML visualization of the memory graph
   edges        Inspect outgoing edges of a memory (base / authored / effective weights, usage)
   trust        Manage non-root instruction file approvals (trust approve <rel-path>)
+  machines     List registered machines and tooling (see System/machines.json)
 
 Use "jm <command> -h" for command-specific help.
 `
@@ -106,6 +107,8 @@ func main() {
 		cmdEdges(vaultRoot, args)
 	case "trust":
 		cmdTrust(vaultRoot, args)
+	case "machines":
+		cmdMachines(vaultRoot, args)
 	case "metrics":
 		cmdMetrics(vaultRoot, args)
 	case "-h", "--help", "help":

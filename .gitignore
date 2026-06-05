@@ -55,3 +55,6 @@ backups/
 # ── Local-only Claude settings (machine-specific) ────────────────────────
 .claude/settings.local.json
 .claude/scheduled_tasks.lock
+
+# ── Machine & tooling registry (real values; example is committed) ────────
+System/machines.json

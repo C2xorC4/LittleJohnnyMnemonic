@@ -145,6 +145,12 @@ type Config struct {
 	// Decay rates by type
 	DecayRates map[string]float64 `yaml:"decay_rates"`
 
+	// Activation floors by type — minimum activation value used in retrieval
+	// scoring. Prevents time-based decay from making durable memory types
+	// (user, feedback, semantic) unretrievable during topic-dormant periods.
+	// Project and reference default to 0.0 (full decay is appropriate).
+	ActivationFloors map[string]float64 `yaml:"activation_floors"`
+
 	// Progressive compression thresholds (days since last_accessed before
 	// fidelity transitions). Flat-key map with format
 	// "<importance>_<from>_to_<to>" — e.g. "moderate_full_to_detailed".
@@ -297,6 +303,23 @@ func DefaultConfig() Config {
 			"episodic":          0.05,
 			"training_override": 0.1,
 			"knowledge":         0.0, // no time-based decay — only superseded or marked obsolete
+		},
+
+		// Activation floors prevent durable memory types from becoming
+		// unretrievable during topic-dormant periods. The formula
+		// activation × relevance × confidence goes negative for memories not
+		// accessed recently; a floor clamps the multiplier so relevance still
+		// contributes. Types representing ephemeral context (project, reference)
+		// intentionally have no floor — their decay is load-bearing.
+		ActivationFloors: map[string]float64{
+			"knowledge":         1.0, // no time decay — fixed at 1.0
+			"episodic":          0.7, // session summaries — most durable
+			"training_override": 0.6, // immune to archival, high floor
+			"user":              0.4, // durable profile data
+			"feedback":          0.4, // durable behavioral rules
+			"semantic":          0.3, // topic-dormant abstractions, not forgotten
+			"project":           0.0, // ephemeral context — full decay intended
+			"reference":         0.0, // can go stale — full decay intended
 		},
 
 		// Progressive compression thresholds — days since last access before
@@ -453,6 +476,51 @@ func DefaultConfig() Config {
 		BackupRetentionKeepLast: 0, // 0 = keep every backup (recovery + conflict-resolution intent)
 		BackupCooldownMinutes:   60,
 	}
+}
+
+// MachineRegistry is the top-level structure for System/machines.json.
+type MachineRegistry struct {
+	SchemaVersion int                       `json:"schema_version"`
+	Machines      map[string]MachineEntry   `json:"machines"`
+	Tooling       map[string]ToolEntry      `json:"tooling"`
+}
+
+// MachineEntry describes a host Claude may interact with.
+type MachineEntry struct {
+	DisplayName   string     `json:"display_name"`
+	Platform      string     `json:"platform"`        // windows | linux | linux-wsl | macos
+	Current       bool       `json:"current,omitempty"`
+	Hostname      string     `json:"hostname,omitempty"`
+	IP            string     `json:"ip,omitempty"`
+	User          string     `json:"user,omitempty"`
+	Elevation     string     `json:"elevation"`       // none | user | prompt | full
+	ElevationNote string     `json:"elevation_note,omitempty"`
+	SSH           *SSHConfig `json:"ssh,omitempty"`
+	Status        string     `json:"status,omitempty"` // "" = ready | "unconfigured"
+	Notes         string     `json:"notes,omitempty"`
+}
+
+// SSHConfig describes how to connect to a machine via SSH.
+type SSHConfig struct {
+	Method string   `json:"method"` // windows-native-openssh | standard
+	Binary string   `json:"binary"` // full path to ssh binary
+	Key    string   `json:"key"`    // full path to private key
+	Flags  []string `json:"flags,omitempty"`
+	Notes  string   `json:"notes,omitempty"`
+}
+
+// ToolEntry describes a tool and where it is installed across machines.
+type ToolEntry struct {
+	Description string                     `json:"description"`
+	Install     string                     `json:"install"` // auto | manual | n/a
+	Type        string                     `json:"type"`    // executable | mcp | service | library
+	Machines    map[string]ToolMachineEntry `json:"machines"`
+}
+
+// ToolMachineEntry describes a tool's installation on a specific machine.
+type ToolMachineEntry struct {
+	Path  string `json:"path"`
+	Notes string `json:"notes,omitempty"`
 }
 
 // ScoredMemory pairs a memory with its computed retrieval score and breakdown.

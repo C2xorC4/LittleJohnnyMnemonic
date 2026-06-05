@@ -456,6 +456,42 @@ The `session-start` hook runs a trust check on the current working directory bef
 
 See `[[Memory/Feedback/repo_trust_protocol]]` for the behavioral rule.
 
+## Machine & Tooling Registry
+
+`System/machines.json` is the authoritative source for machine metadata, SSH connection
+details, installed tooling paths, and per-machine permission levels. It is loaded at every
+session start and injected into context. It is gitignored (machine-local); the committed
+template is `System/machines.example.json`. See [[System/Tooling]] for schema and full protocol.
+
+**Before any SSH connection:** Read the target machine's `ssh` entry. Use `ssh.binary`,
+`ssh.key`, and `ssh.flags` exactly as specified. Never default to Git Bash SSH or assume a
+connection method — the registry is authoritative. Current known constraint: strx requires
+`C:\Windows\System32\OpenSSH\ssh.exe` (Git Bash SSH has libcrypto incompatibility with the
+mcp-binja key).
+
+**Before any installation attempt:** Check the machine's `elevation` field:
+- `none` — do not attempt sudo, UAC, or any elevation. Raise an explicit request to the user
+  with the specific install command they need to run, and wait.
+- `user` — can install to user-local directories without elevation (pip --user, go install, etc.)
+- `prompt` — UAC or sudo prompt is available but Claude cannot trigger it. Raise a request.
+- `full` — root/admin available in-session (e.g., argus-lab). Proceed with installs.
+
+**Before concluding a tool is missing:** Check the `tooling` entries across all machines. If
+the tool exists on another machine, surface that and ask whether to use it remotely rather than
+installing locally.
+
+**When a required tool has no registry entry:** Ask the user for location and install preference
+before attempting discovery, download, or installation.
+
+**Unconfigured entries** (`"status": "unconfigured"`): Skip in routing decisions — never
+attempt SSH or installs on them.
+
+**Project-scoped tooling:** Projects may keep a `tooling.json` at their project root
+(gitignored in that repo) that declares project-specific tooling. Format: `{"project":
+"<name>", "inherits": "LJM:System/machines", "tooling": { ... }}`. Consult it when working in
+that project's Claude Code session. Only add tooling to the master registry if it's used
+outside that single project.
+
 ## Book Ingestion
 
 When ingesting technical or reference books (from `D:\References\` or
