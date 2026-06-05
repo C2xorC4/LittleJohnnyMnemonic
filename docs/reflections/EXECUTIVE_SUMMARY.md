@@ -24,11 +24,21 @@ associative connections to other entries; *Stale* = not accessed in 30+ days.
 | 2026-05-11 | 19 | 425 | 6 | 51% | 56% |
 | 2026-05-15 | **170** | 427 | 6 | 51% | 58% |
 | 2026-05-22 | 32 | 546 | 11 | 60% | 67% |
+| 2026-06-05 | 5 | 562 | 11 | 61% | 14 stale / 422 topic-dormant† |
 
 The 170-entry buffer on 2026-05-15 represents a backlog — consolidation
 wasn't keeping pace with the write rate. Hook-level triggers and a scheduled
 task were added to address this. The stale ratio is trending up despite
 auto-consolidation, which handles new entries but not dormant LTM activation.
+
+The +16 LTM from May 22 → June 5 is mostly knowledge corpus growth: 13 of 16
+new entries came from the GKE ingestion on June 4.
+
+†2026-06-05: Stale reporting changed with activation floors. Previous "stale"
+counts were undifferentiated. Now: "stale" = project memories with confidence
+decay pending; "topic-dormant" = profiles/semantic/knowledge correctly dormant
+between relevant sessions (protected by per-type activation floors, no decay).
+Raw dormant count (436/562 = 77%) is misleading — 422 of those are correct.
 
 For a full breakdown by memory category (User, Feedback, Project, Semantic,
 etc.), see the per-assessment documents.
@@ -56,6 +66,11 @@ etc.), see the per-assessment documents.
 | → May 22 | T7 architectural fix — scan subdirectory + hash-gated approval for non-root CLAUDE.md | ✓ |
 | → May 22 | Adaptive edge decay — uplift-only temporal decay (λ=0.003851, 180-day half-life) | ✓ |
 | → May 22 | AppendRetrievalSession wired into hook path — adaptive edge gap 3 closed | ✓ |
+| → Jun 4 | GKE ingestion complete — *A Guide to Kernel Exploitation* (Perla & Oldani): 13 Knowledge entries, full book in one session | ✓ |
+| → Jun 5 | Signal-efficient ingestion protocol formalized — 4-step per-chapter signal assessment (skip/enrich/create/override); enrich existing entries before creating new ones | ✓ |
+| → Jun 5 | Machine/tooling registry — `jm machines`, SSH commands, elevation levels injected at session start | ✓ |
+| → Jun 5 | Activation floors — per-type minimum activation; durable categories stay retrievable between relevant sessions | ✓ |
+| → Jun 5 | Autodream console suppression — background scheduler no longer spawns visible console windows | ✓ |
 
 ---
 
@@ -71,7 +86,7 @@ never removed.
 | Substrate's own retrieval math is a potential attack surface | **Partial** — T7 fixed (non-root CLAUDE.md gated by hash approval); retrieval scoring itself not yet hardened |
 | Usage patterns feed back into what gets retrieved | **Closed** — adaptive edges enabled May 15 |
 | Most memories are unlinked (target: <30%) | **Open** — 51% unlinked, unchanged |
-| Stale-memory ratio (possible echo chamber) | **Open** — 67%, still growing |
+| Stale-memory ratio (possible echo chamber) | **Reframed** — activation floors split "stale" from "topic-dormant." 14 project memories genuinely stale; 422 dormant correctly (protected). Raw % went up; meaningful % shrank. |
 | `jm graph` accesses leave no signal | **Open** — visualization reads memory without logging the access |
 | Buffer consolidation cadence keeps pace with write rate | **Improved** — three-layer trigger added; backlog still exists |
 | T7-class injection: developer-convention framing bypasses trust checks | **Closed** — hash-gated approval (`approved_hashes`), `trusted-unapproved` sentinel, `jm trust approve` command; shipped May 22 |
@@ -152,11 +167,12 @@ Open questions across assessments. Closed when there's evidence.
    a load-bearing concept sits unnamed can produce surface-correct but
    structurally-incomplete retrieval. **Gap 3 closed (2026-05-22):**
    `AppendRetrievalSession` is now wired into the hook path; conversational
-   retrieval sessions write to `retrieval_sessions.jsonl`. Two gaps remain:
-   (1) `RetrievalSessionLogEnabled` config gate must be opened, (2)
-   `pickStableTrace` needs a code path that reads `edge_usage.jsonl`. Until
-   both close, edge weights don't move. The mechanism is architecturally
-   correct; the pilot needs one config change and one code path.
+   retrieval sessions write to `retrieval_sessions.jsonl`. **Gap 1 closed
+   (confirmed 2026-06-05):** `retrieval_session_log_enabled: true` in Config.md;
+   `retrieval_sessions.jsonl` is accumulating (~83MB). One gap remains: (2)
+   `pickStableTrace` needs a code path that writes to and reads `edge_usage.jsonl`.
+   Until that closes, edge weights don't move. Signal is piling up; nothing is
+   consuming it.
 
 4. **T7 architectural response.** ~~Not yet designed.~~ Shipped May 22.
    Non-root CLAUDE.md files in trusted repos now require SHA256 approval
@@ -169,6 +185,7 @@ Open questions across assessments. Closed when there's evidence.
 
 ## Assessment log
 
+- [2026-06-05](2026-06-05_assessment.md)
 - [2026-05-22](2026-05-22_assessment.md)
 - [2026-05-15 — week of May 10–15](2026-05-15_assessment.md)
 - [2026-05-11](2026-05-11_assessment.md)
