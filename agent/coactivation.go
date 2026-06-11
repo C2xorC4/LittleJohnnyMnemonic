@@ -59,7 +59,14 @@ func SaveCoactivation(vaultRoot string, log *CoactivationLog) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, data, 0644)
+	// Atomic write (unique temp + rename): coactivation.json is written by
+	// hook-triggered `jm associate` runs that can overlap. A plain
+	// os.WriteFile (O_TRUNC) is not enough — two racing writers truncate at
+	// open, and the shorter write leaves the longer write's tail behind,
+	// producing trailing garbage after the top-level JSON value. See the
+	// 2026-06-11 corruption that silently dropped the graph coactivation layer.
+	writeAtomic(path, data, 0o644)
+	return nil
 }
 
 // RecordCoactivation updates the log with a new set of co-activated memories.

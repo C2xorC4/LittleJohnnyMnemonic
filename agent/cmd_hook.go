@@ -478,14 +478,35 @@ func readAutoConsolidationSuspended(vaultRoot string) (suspended bool, reason st
 	return true, payload.Reason, t
 }
 
-// writeAtomic writes data to path via a temp-file + rename so that a crash
-// mid-write cannot leave path in a corrupt partial state.
+// writeAtomic writes data to path via a uniquely-named temp file + rename so
+// that neither a crash mid-write nor a concurrent writer can leave path in a
+// corrupt partial state. A unique temp name (rather than a fixed path+".tmp")
+// is essential: two processes writing the same target — e.g. concurrent
+// hook-triggered `jm associate` runs both saving coactivation.json — must not
+// share a temp file, or one rename can publish the other's half-written bytes.
+// os.Rename replaces the destination atomically (MoveFileEx with
+// MOVEFILE_REPLACE_EXISTING on Windows), so last-writer-wins is the only
+// failure mode — never a torn file with a stale tail.
 func writeAtomic(path string, data []byte, perm os.FileMode) {
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, data, perm); err != nil {
+	dir := filepath.Dir(path)
+	f, err := os.CreateTemp(dir, "."+filepath.Base(path)+".*.tmp")
+	if err != nil {
 		return
 	}
-	_ = os.Rename(tmp, path)
+	tmp := f.Name()
+	if _, err := f.Write(data); err != nil {
+		f.Close()
+		os.Remove(tmp)
+		return
+	}
+	if err := f.Close(); err != nil {
+		os.Remove(tmp)
+		return
+	}
+	_ = os.Chmod(tmp, perm)
+	if err := os.Rename(tmp, path); err != nil {
+		os.Remove(tmp)
+	}
 }
 
 func readLastAutoConsolidationTrigger(vaultRoot string) time.Time {

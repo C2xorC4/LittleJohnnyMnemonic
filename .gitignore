@@ -20,6 +20,7 @@ Ingestion/manifest_*.md
 Ingestion/INDEX.md
 
 # ── Build artifacts and rebuildables ─────────────────────────────────────
+/jm.exe
 agent/jm
 agent/jm.exe
 agent/jm.test
