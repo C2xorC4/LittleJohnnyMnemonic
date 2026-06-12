@@ -87,10 +87,11 @@ func cmdLearnEdges(vaultRoot string, args []string) {
 				continue
 			}
 
-			// Add link to A pointing to B
-			wikiTarget := toWikiLink(c.MemoryB)
+			// Add link to A pointing to B. Store the bracketless canonical path:
+			// WriteMemoryEntry wraps Target in [[ ]], so passing an already-
+			// bracketed value (the old toWikiLink) produced [[[[...]]]] on disk.
 			memA.Links = append(memA.Links, Link{
-				Target:       wikiTarget,
+				Target:       relMemoryPath(memB),
 				Relationship: "learned",
 			})
 			if err := WriteMemoryEntry(memA); err != nil {
@@ -98,10 +99,9 @@ func cmdLearnEdges(vaultRoot string, args []string) {
 				continue
 			}
 
-			// Add reverse link to B pointing to A
-			wikiTargetReverse := toWikiLink(c.MemoryA)
+			// Add reverse link to B pointing to A.
 			memB.Links = append(memB.Links, Link{
-				Target:       wikiTargetReverse,
+				Target:       relMemoryPath(memA),
 				Relationship: "learned",
 			})
 			if err := WriteMemoryEntry(memB); err != nil {
@@ -126,16 +126,3 @@ func shortKey(key string) string {
 	return key
 }
 
-// toWikiLink converts a normalized key back to wiki-link format.
-func toWikiLink(key string) string {
-	// Capitalize first segment: "memory/user/foo" → "[[Memory/User/foo]]"
-	parts := strings.Split(key, "/")
-	for i := range parts {
-		if i < len(parts)-1 { // capitalize directory segments, not filename
-			if len(parts[i]) > 0 {
-				parts[i] = strings.ToUpper(parts[i][:1]) + parts[i][1:]
-			}
-		}
-	}
-	return "[[" + strings.Join(parts, "/") + "]]"
-}

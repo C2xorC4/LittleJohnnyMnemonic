@@ -277,7 +277,12 @@ func ParseMemoryEntry(path string) (*MemoryEntry, error) {
 	m := parseYAMLMap(yamlStr)
 
 	entry := &MemoryEntry{
-		Type:               MemoryType(strings.TrimSpace(m["type"])),
+		// Strip surrounding quotes: ingested entries wrote `type: "knowledge"`
+		// while WriteMemoryEntry emits unquoted `type: knowledge`. Without this,
+		// quoted-type entries load with Type == `"knowledge"` and silently fail
+		// every type equality check (decay defaults, activation floors,
+		// knowledge no-decay, type-scoped scoring).
+		Type:               MemoryType(strings.Trim(strings.TrimSpace(m["type"]), "\"'")),
 		Title:              extractQuotedValue(m["title"]),
 		Created:            parseTime(m["created"]),
 		LastAccessed:       parseTime(m["last_accessed"]),
@@ -301,6 +306,17 @@ func ParseMemoryEntry(path string) (*MemoryEntry, error) {
 		ObservationCount: parseInt(m["observation_count"]),
 		Profile:          parseBool(m["profile"]),
 		Evidence:         parseStringList(m["evidence"]),
+
+		// Round-trip-critical: these were previously NOT read here, so any
+		// access-tracking rewrite (every retrieval) silently stripped them from
+		// disk. consolidation_source is provenance; the source_*/domain/verified
+		// block is the Knowledge type's REQUIRED provenance. See round-trip test.
+		ConsolidationSource:  parseStringList(m["consolidation_source"]),
+		ContributingSessions: parseStringList(m["contributing_sessions"]),
+		SourceDocument:       extractQuotedValue(m["source_document"]),
+		SourceVersion:        extractQuotedValue(m["source_version"]),
+		Domain:               strings.TrimSpace(m["domain"]),
+		Verified:             parseBool(m["verified"]),
 
 		ArchiveReason: strings.TrimSpace(m["archive_reason"]),
 		FinalScore:    parseFloat(m["final_score"]),
@@ -381,6 +397,10 @@ func LoadAllMemories(vaultRoot string) ([]*MemoryEntry, error) {
 		}
 		all = append(all, entries...)
 	}
+	// Overlay sidecar access tracking (Metrics/access_*) so scoring, status, and
+	// graph see current access without it being read from — or written to —
+	// frontmatter. No-op before migration (empty index).
+	mergeAccessIndex(vaultRoot, all)
 	return all, nil
 }
 
@@ -542,6 +562,25 @@ func WriteMemoryEntry(entry *MemoryEntry) error {
 		for _, e := range entry.Evidence {
 			buf.WriteString(fmt.Sprintf("  - \"%s\"\n", e))
 		}
+	}
+
+	if len(entry.ContributingSessions) > 0 {
+		writeStringList(&buf, "contributing_sessions", entry.ContributingSessions)
+	}
+
+	// Knowledge-base provenance — REQUIRED for knowledge entries. Previously
+	// neither parsed nor written, so retrieval rewrites stripped it.
+	if entry.SourceDocument != "" {
+		buf.WriteString(fmt.Sprintf("source_document: \"%s\"\n", entry.SourceDocument))
+	}
+	if entry.SourceVersion != "" {
+		buf.WriteString(fmt.Sprintf("source_version: \"%s\"\n", entry.SourceVersion))
+	}
+	if entry.Domain != "" {
+		buf.WriteString(fmt.Sprintf("domain: %s\n", entry.Domain))
+	}
+	if entry.Verified {
+		buf.WriteString("verified: true\n")
 	}
 
 	if entry.Archived != nil {

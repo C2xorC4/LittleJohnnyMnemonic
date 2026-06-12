@@ -147,17 +147,21 @@ func AssociateMemories(
 	// Update access metadata and record co-activations
 	if opts.UpdateAccess && len(results) > 0 {
 		var coactivatedKeys []string
+		accessKeys := make([]string, 0, len(results))
 		for _, r := range results {
-			r.Memory.LastAccessed = now
-			r.Memory.AccessCount++
-			// B' semantics: retrieval-path access un-archives soft-archived memories.
+			k := normalizeKey(r.Memory)
+			accessKeys = append(accessKeys, k)
+			coactivatedKeys = append(coactivatedKeys, k)
+			// Un-archiving is a genuine content change → still writes the file.
 			if UnarchiveOnAccess(r.Memory) {
 				fmt.Fprintf(os.Stderr, "[jm associate] resurrected from archive: %s\n", r.Memory.FileName)
+				if err := WriteMemoryEntry(r.Memory); err != nil {
+					fmt.Fprintf(os.Stderr, "[!] Failed to update %s: %v\n", r.Memory.FileName, err)
+				}
 			}
-			if err := WriteMemoryEntry(r.Memory); err != nil {
-				fmt.Fprintf(os.Stderr, "[!] Failed to update %s: %v\n", r.Memory.FileName, err)
-			}
-			coactivatedKeys = append(coactivatedKeys, normalizeKey(r.Memory))
+		}
+		if err := recordAccessBatch(vaultRoot, accessKeys, now); err != nil {
+			fmt.Fprintf(os.Stderr, "[!] Failed to record access: %v\n", err)
 		}
 
 		if coLog, err := LoadCoactivation(vaultRoot); err == nil {

@@ -234,14 +234,15 @@ func runSessionStart(vaultRoot string, input *hookInput) {
 		unique = append(unique, m)
 	}
 
-	// Update access metadata synchronously
+	// Record access in the sidecar (Metrics/access_events.jsonl) rather than
+	// rewriting each .md — retrieval must never mutate memory content.
 	now := time.Now()
+	keys := make([]string, 0, len(unique))
 	for _, m := range unique {
-		m.LastAccessed = now
-		m.AccessCount++
-		if err := WriteMemoryEntry(m); err != nil {
-			fmt.Fprintf(os.Stderr, "[jm hook] session-start: update %s: %v\n", m.FileName, err)
-		}
+		keys = append(keys, normalizeKey(m))
+	}
+	if err := recordAccessBatch(vaultRoot, keys, now); err != nil {
+		fmt.Fprintf(os.Stderr, "[jm hook] session-start: record access: %v\n", err)
 	}
 
 	writeSessionStartContext(os.Stdout, vaultRoot, unique)

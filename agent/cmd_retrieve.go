@@ -65,16 +65,19 @@ func cmdRetrieve(vaultRoot string, args []string) {
 
 	// Update access metadata unless --no-update
 	if !*noUpdate {
+		keys := make([]string, 0, len(retrieved))
 		for _, s := range retrieved {
-			s.Memory.LastAccessed = now
-			s.Memory.AccessCount++
-			// B' semantics: retrieval-path access un-archives soft-archived memories.
+			keys = append(keys, normalizeKey(s.Memory))
+			// Un-archiving is a genuine content change → still writes the file.
 			if UnarchiveOnAccess(s.Memory) {
 				fmt.Fprintf(os.Stderr, "[jm retrieve] resurrected from archive: %s\n", s.Memory.FileName)
+				if err := WriteMemoryEntry(s.Memory); err != nil {
+					fmt.Fprintf(os.Stderr, "[!] Failed to update %s: %v\n", s.Memory.FileName, err)
+				}
 			}
-			if err := WriteMemoryEntry(s.Memory); err != nil {
-				fmt.Fprintf(os.Stderr, "[!] Failed to update %s: %v\n", s.Memory.FileName, err)
-			}
+		}
+		if err := recordAccessBatch(vaultRoot, keys, now); err != nil {
+			fmt.Fprintf(os.Stderr, "[!] Failed to record access: %v\n", err)
 		}
 	}
 

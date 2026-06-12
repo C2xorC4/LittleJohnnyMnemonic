@@ -327,6 +327,11 @@ func cmdConsolidate(vaultRoot string, args []string) {
 		if err := WriteConsolidationOutcomes(vaultRoot, report.BufferAssessments, now); err != nil {
 			fmt.Fprintf(os.Stderr, "[!] Failed to write consolidation outcomes: %v\n", err)
 		}
+		// Compact the access event log into the base snapshot so it stays bounded
+		// (consolidation is the natural low-frequency point to fold it).
+		if err := foldAccessLog(vaultRoot); err != nil {
+			fmt.Fprintf(os.Stderr, "[!] Failed to fold access log: %v\n", err)
+		}
 	} else {
 		fmt.Println("  [DRY RUN] No log written.")
 	}

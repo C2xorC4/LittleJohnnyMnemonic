@@ -210,13 +210,14 @@ func cmdAssociate(vaultRoot string, args []string) {
 	// Update access metadata and record co-activations
 	if !*noUpdate {
 		var coactivatedKeys []string
+		accessKeys := make([]string, 0, len(results))
 		for _, r := range results {
-			r.Memory.LastAccessed = now
-			r.Memory.AccessCount++
-			if err := WriteMemoryEntry(r.Memory); err != nil {
-				fmt.Fprintf(os.Stderr, "[!] Failed to update %s: %v\n", r.Memory.FileName, err)
-			}
-			coactivatedKeys = append(coactivatedKeys, normalizeKey(r.Memory))
+			k := normalizeKey(r.Memory)
+			accessKeys = append(accessKeys, k)
+			coactivatedKeys = append(coactivatedKeys, k)
+		}
+		if err := recordAccessBatch(vaultRoot, accessKeys, now); err != nil {
+			fmt.Fprintf(os.Stderr, "[!] Failed to record access: %v\n", err)
 		}
 
 		// Record co-activation for edge learning

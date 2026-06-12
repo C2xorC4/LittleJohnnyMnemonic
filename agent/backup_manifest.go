@@ -215,13 +215,47 @@ func TarGzManifest(m *BackupManifest, w io.Writer) error {
 		if err != nil {
 			return fmt.Errorf("open %s: %w", rel, err)
 		}
-		if _, err := io.Copy(tw, f); err != nil {
+		// Copy EXACTLY hdr.Size bytes. The size was fixed from the earlier
+		// os.Stat, but volatile files (e.g. Metrics/retrieval_sessions.jsonl,
+		// live-appended by every retrieval/hook) can grow between stat and copy.
+		// A plain io.Copy would stream the grown tail and trip archive/tar's
+		// "write too long". If the file shrank instead (rotation/truncation),
+		// pad the entry so its body still matches the declared header size.
+		if err := writeTarEntryBounded(tw, f, hdr.Size); err != nil {
 			f.Close()
 			return fmt.Errorf("tar copy %s: %w", rel, err)
 		}
 		f.Close()
 	}
 	return nil
+}
+
+// writeTarEntryBounded writes exactly size bytes from r into tw: it never writes
+// more than size (so a concurrently-growing file can't overrun the tar header),
+// and pads with zeros if r yields fewer than size bytes (so a shrunk file can't
+// leave the entry short of its declared size).
+func writeTarEntryBounded(tw io.Writer, r io.Reader, size int64) error {
+	n, err := io.CopyN(tw, r, size)
+	if err != nil && err != io.EOF {
+		return err
+	}
+	if n < size {
+		if _, err := io.CopyN(tw, zeroReader{}, size-n); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// zeroReader is an unbounded source of zero bytes, used to pad a tar entry when
+// its backing file shrinks between stat and copy.
+type zeroReader struct{}
+
+func (zeroReader) Read(p []byte) (int, error) {
+	for i := range p {
+		p[i] = 0
+	}
+	return len(p), nil
 }
 
 // UntarGzInto reads a tar.gz stream from r and extracts every regular-file
@@ -246,7 +280,7 @@ func UntarGzInto(r io.Reader, target string) ([]string, error) {
 			return nil, fmt.Errorf("tar next: %w", err)
 		}
 		clean := filepath.ToSlash(hdr.Name)
-		if clean == "" || strings.Contains(clean, "..") || strings.HasPrefix(clean, "/") {
+		if !isSafeTarPath(clean) {
 			return nil, fmt.Errorf("unsafe tar path: %q", hdr.Name)
 		}
 		if hdr.Typeflag != tar.TypeReg && hdr.Typeflag != tar.TypeRegA { //nolint:staticcheck
@@ -268,6 +302,28 @@ func UntarGzInto(r io.Reader, target string) ([]string, error) {
 		extracted = append(extracted, clean)
 	}
 	return extracted, nil
+}
+
+// isSafeTarPath reports whether a tar entry name is safe to extract: non-empty,
+// relative, and with no ".." path SEGMENT. A literal filename that merely
+// CONTAINS ".." (e.g. "agent/..jm.exe") is safe — only a ".." directory
+// component is a traversal risk. The previous strings.Contains(name, "..")
+// check false-rejected such names and made every backup containing the stray
+// "agent/..jm.exe" artifact (May 22 – Jun 11) un-restorable.
+func isSafeTarPath(name string) bool {
+	name = filepath.ToSlash(name)
+	if name == "" || strings.HasPrefix(name, "/") {
+		return false
+	}
+	if filepath.IsAbs(filepath.FromSlash(name)) { // e.g. C:\... on Windows
+		return false
+	}
+	for _, seg := range strings.Split(name, "/") {
+		if seg == ".." {
+			return false
+		}
+	}
+	return true
 }
 
 // EncryptToAge wraps w in an age envelope using the provided X25519 recipient

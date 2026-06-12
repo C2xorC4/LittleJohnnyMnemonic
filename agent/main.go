@@ -37,6 +37,8 @@ Commands:
   daydream     Daydream finding triage — review or list pending entries
   graph        Export interactive HTML visualization of the memory graph
   edges        Inspect outgoing edges of a memory (base / authored / effective weights, usage)
+  lint-links   Audit link health: asymmetric, dangling, prose-only, and concept-mention links
+  recover-provenance  Recover frontmatter fields stripped by the round-trip bug, from backup history
   trust        Manage non-root instruction file approvals (trust approve <rel-path>)
   machines     List registered machines and tooling (see System/machines.json)
 
@@ -105,6 +107,14 @@ func main() {
 		cmdGraph(vaultRoot, args)
 	case "edges":
 		cmdEdges(vaultRoot, args)
+	case "lint-links":
+		cmdLintLinks(vaultRoot, args)
+	case "recover-provenance":
+		cmdRecoverProvenance(vaultRoot, args)
+	case "migrate-access":
+		cmdMigrateAccess(vaultRoot, args)
+	case "sync-access":
+		cmdSyncAccess(vaultRoot, args)
 	case "trust":
 		cmdTrust(vaultRoot, args)
 	case "machines":
