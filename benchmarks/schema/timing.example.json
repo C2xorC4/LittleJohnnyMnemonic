@@ -1,0 +1,15 @@
+{
+  "task_id": "T01",
+  "host": "grok",
+  "arm": "grok-ljm-on",
+  "model": "grok-4-0709",
+  "started_at": "2026-06-16T18:30:00Z",
+  "finished_at": "2026-06-16T18:30:14Z",
+  "wall_clock_s": 14.0,
+  "turn_completed_s": 12.4,
+  "turn_completed_source": "grok_ui",
+  "tool_policy": "memory-only",
+  "web_search_used": false,
+  "memory_paths_cited": ["Memory/Knowledge/ootm_theory_of_competitive_control"],
+  "operator_notes": ""
+}

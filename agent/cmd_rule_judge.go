@@ -116,7 +116,8 @@ type judgeVerdict struct {
 
 func callJudge(payload judgePayload) (verdict, reason string, err error) {
 	userContent := buildJudgeUserMessage(payload)
-	rawText, _, err := callHaikuJudge(judgeSystemPrompt, userContent, 200)
+	cfg := LoadConfig(payload.VaultRoot)
+	rawText, _, err := callHaikuJudge(judgeSystemPrompt, userContent, 200, cfg.JudgeCLIFallbackEnabled, cfg.JudgeCLIMaxConcurrent)
 	if err != nil {
 		return "error", "", err
 	}

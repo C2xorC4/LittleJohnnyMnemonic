@@ -23,6 +23,60 @@ func TestExtractKeywords_BasicTokenization(t *testing.T) {
 	}
 }
 
+func TestScoringKeywords_FiltersOperationalTerms(t *testing.T) {
+	keywords := ExtractKeywords(
+		"apply a small vetted set on memory project edge_usage learn-edge adaptive_edge_scope",
+	)
+	scoring := ScoringKeywords(keywords)
+
+	scoringSet := make(map[string]bool)
+	for _, kw := range scoring {
+		scoringSet[kw] = true
+	}
+	for _, generic := range []string{"apply", "small", "vet", "set", "memori", "project"} {
+		stemmed := Stem(generic)
+		if scoringSet[stemmed] {
+			t.Errorf("operational term %q should be filtered from scoring keywords", stemmed)
+		}
+	}
+	for _, keep := range []string{"edge_usage", "learn-edge", "adaptive_edge_scope"} {
+		if !scoringSet[keep] {
+			t.Errorf("discriminating term %q should remain in scoring keywords", keep)
+		}
+	}
+}
+
+func TestScoringKeywords_FallbackWhenAllOperational(t *testing.T) {
+	keywords := ExtractKeywords("apply set filter process memory project")
+	scoring := ScoringKeywords(keywords)
+	if len(scoring) != len(keywords) {
+		t.Fatalf("expected fallback to full keywords when all operational, got %v from %v", scoring, keywords)
+	}
+}
+
+func TestHasDiscriminatingMatch_RequiresHighIDFHit(t *testing.T) {
+	m := &MemoryEntry{
+		Title: "LJM adaptive edge",
+		Body:  "edge_usage.jsonl and adaptive_edge_scope pilot",
+		Tags:  []string{"ljm"},
+	}
+	keywords := []string{"edge_usage", "project", "apply"}
+	idf := IDFWeights{"edge_usage": 0.9, "project": 0.1, "apply": 0.05}
+
+	if !HasDiscriminatingMatch(m, keywords, idf, 0.4) {
+		t.Error("expected match via high-IDF edge_usage body hit")
+	}
+
+	m2 := &MemoryEntry{
+		Title: "Generic project",
+		Body:  "apply filters on project memory",
+		Tags:  []string{"project"},
+	}
+	if HasDiscriminatingMatch(m2, keywords, idf, 0.4) {
+		t.Error("generic-only matches should not pass discriminating gate")
+	}
+}
+
 func TestExtractKeywords_StopWordsRemoved(t *testing.T) {
 	keywords := ExtractKeywords("the quick brown fox and the lazy dog")
 	for _, kw := range keywords {

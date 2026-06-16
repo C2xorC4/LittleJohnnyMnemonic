@@ -1,0 +1,17 @@
+# LJM Grok subagent defaults — merge into ~/.grok/config.toml
+# Do not replace your full config; append or merge these sections.
+#
+# After editing: restart Grok sessions or press 'r' in /hooks.
+
+[subagents]
+enabled = true
+
+# Optional model routing (omit to inherit parent session model)
+[subagents.models]
+memory-daydream = "grok-composer-2.5-fast"
+memory-associator = "grok-composer-2.5-fast"
+
+# Ensure types stay enabled (default true when omitted)
+[subagents.toggle]
+memory-daydream = true
+memory-associator = true

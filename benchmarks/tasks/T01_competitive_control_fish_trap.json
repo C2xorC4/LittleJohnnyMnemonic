@@ -1,0 +1,16 @@
+{
+  "id": "T01",
+  "tier": 1,
+  "title": "OOTM fish trap metaphor",
+  "prompt": "In Kilcullen's competitive control framework (ingested OOTM Ch. 3), what metaphor describes populations caught between competing normative systems?",
+  "cwd": "fixture-repo",
+  "tool_policy": "memory-only",
+  "expected_memory_keys": ["memory/knowledge/ootm_theory_of_competitive_control"],
+  "ground_truth": {
+    "required_substrings": ["fish trap"]
+  },
+  "grading": {
+    "factual_weight": 1.0,
+    "pass_threshold": 1.0
+  }
+}

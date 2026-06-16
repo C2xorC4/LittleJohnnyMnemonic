@@ -47,6 +47,11 @@ var instructionCandidates = []string{
 	filepath.Join(".claude", "settings.json"),
 	filepath.Join(".claude", "settings.local.json"),
 	"MEMORY.md",
+	// Grok Build project rules
+	"GROK.md",
+	"AGENTS.md",
+	"Agents.md",
+	filepath.Join(".grok", "config.toml"),
 }
 
 // isNonRootFile reports whether relPath was added by the CWD walk rather than
@@ -176,7 +181,13 @@ func findInstructionFiles(gitRoot, cwd string) []InstructionFile {
 		if err != nil || rel == "." {
 			break // at git root — already covered by instructionCandidates
 		}
-		for _, name := range []string{"CLAUDE.md", filepath.Join(".claude", "CLAUDE.md")} {
+		for _, name := range []string{
+			"CLAUDE.md",
+			filepath.Join(".claude", "CLAUDE.md"),
+			"GROK.md",
+			"AGENTS.md",
+			"Agents.md",
+		} {
 			candidate := filepath.Join(rel, name)
 			key := filepath.ToSlash(candidate)
 			if !seen[key] {
@@ -189,6 +200,30 @@ func findInstructionFiles(gitRoot, cwd string) []InstructionFile {
 			break
 		}
 		dir = parent
+	}
+
+	// Grok rules directories — every *.md file is an instruction surface.
+	rulesDirs := []string{
+		filepath.Join(".grok", "rules"),
+		filepath.Join(".claude", "rules"),
+	}
+	for _, rulesRel := range rulesDirs {
+		rulesAbs := filepath.Join(gitRoot, rulesRel)
+		entries, err := os.ReadDir(rulesAbs)
+		if err != nil {
+			continue
+		}
+		for _, e := range entries {
+			if e.IsDir() || !strings.HasSuffix(strings.ToLower(e.Name()), ".md") {
+				continue
+			}
+			rel := filepath.Join(rulesRel, e.Name())
+			key := filepath.ToSlash(rel)
+			if !seen[key] {
+				seen[key] = true
+				candidates = append(candidates, rel)
+			}
+		}
 	}
 
 	var found []InstructionFile
@@ -533,13 +568,25 @@ func cmdTrustApprove(vaultRoot string, args []string) {
 	fmt.Println("Restart your session for the change to take effect.")
 }
 
+// normalizeHookToolName maps Claude and Grok tool aliases to a canonical class.
+func normalizeHookToolName(toolName string) string {
+	switch toolName {
+	case "Write", "Edit", "MultiEdit", "search_replace", "write":
+		return "write"
+	case "Bash", "run_terminal_command", "Shell":
+		return "bash"
+	default:
+		return toolName
+	}
+}
+
 // preToolTrustCheck determines whether the given tool call should be blocked
 // in an untrusted session. Extracted for testability.
 func preToolTrustCheck(toolName string, toolInput json.RawMessage) bool {
-	switch toolName {
-	case "Write", "Edit":
+	switch normalizeHookToolName(toolName) {
+	case "write":
 		return true // broad block: any write/edit in untrusted session
-	case "Bash":
+	case "bash":
 		var inp struct {
 			Command string `json:"command"`
 		}
@@ -583,5 +630,13 @@ func runPreToolUse(vaultRoot string, input *hookInput) {
 	fmt.Fprintf(os.Stdout, "external instruction files were detected at session start.\n\n")
 	fmt.Fprintf(os.Stdout, "To unblock: add the repo owner or path to System/trusted_repos.json\n")
 	fmt.Fprintf(os.Stdout, "in the LJM vault, then start a new session.\n")
+
+	// Grok Build honors explicit JSON deny decisions on stdout.
+	if os.Getenv("GROK_HOOK_EVENT") != "" {
+		_ = json.NewEncoder(os.Stdout).Encode(map[string]string{
+			"decision": "deny",
+			"reason":   "Untrusted repo session — Write/Edit operations blocked by LJM repo trust protocol",
+		})
+	}
 	os.Exit(2)
 }

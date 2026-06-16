@@ -29,6 +29,34 @@ var stopWords = map[string]bool{
 	"way": true, "where": true, "all": true, "any": true,
 }
 
+// operationalStopWords are stemmed tokens too generic for relevance scoring on
+// their own. Fine inside phrases (edge_usage, learn-edge); dropped as isolated
+// query terms so IDF weighting reflects discriminating vocabulary.
+var operationalStopWords map[string]bool
+
+func init() {
+	raw := []string{
+		"accept", "address", "adjust", "answer", "apply", "accordingly", "also",
+		"before", "best", "beyond", "block", "change", "config", "correct",
+		"creation", "criteria", "current", "design", "either", "entry",
+		"evidence", "exist", "feedback", "filter", "gate", "ground", "happen",
+		"issue", "jm", "learn", "loop", "maturity", "meaningful", "memory",
+		"non-zero",
+		"methodology", "metric", "miss", "note", "operational", "pilot",
+		"prerequisite", "process", "project", "recommend", "set", "show", "small",
+		"state", "status", "subset", "temporarily", "unsure", "upstream",
+		"validation", "vet", "widen", "without", "edge",
+	}
+	operationalStopWords = make(map[string]bool, len(raw))
+	for _, w := range raw {
+		operationalStopWords[Stem(w)] = true
+	}
+}
+
+// DefaultDiscriminatingMinIDF is the minimum normalized IDF weight a keyword
+// must carry to count as a discriminating match for the relevance gate.
+const DefaultDiscriminatingMinIDF = 0.4
+
 // isVowel reports whether c is an English vowel.
 func isVowel(c byte) bool {
 	return c == 'a' || c == 'e' || c == 'i' || c == 'o' || c == 'u'
@@ -174,6 +202,59 @@ func ExtractKeywords(text string) []string {
 		keywords = append(keywords, t)
 	}
 	return keywords
+}
+
+// ScoringKeywords returns the subset of stemmed keywords used for IDF and
+// relevance scoring. Operational stopwords are removed; if nothing remains,
+// the original slice is returned unchanged.
+func ScoringKeywords(keywords []string) []string {
+	if len(keywords) == 0 {
+		return keywords
+	}
+	filtered := make([]string, 0, len(keywords))
+	for _, kw := range keywords {
+		if !operationalStopWords[kw] {
+			filtered = append(filtered, kw)
+		}
+	}
+	if len(filtered) == 0 {
+		return keywords
+	}
+	return filtered
+}
+
+// QueryHasDiscriminatingTerms reports whether any scoring keyword carries at
+// least minWeight IDF — used to decide whether the discriminating-match gate
+// should apply (skipped for all-generic queries).
+func QueryHasDiscriminatingTerms(idf IDFWeights, keywords []string, minWeight float64) bool {
+	for _, kw := range keywords {
+		if idf[kw] >= minWeight {
+			return true
+		}
+	}
+	return false
+}
+
+// HasDiscriminatingMatch reports whether the memory matches at least one
+// keyword whose IDF weight meets minWeight on a tag or in title/body.
+func HasDiscriminatingMatch(m *MemoryEntry, keywords []string, idf IDFWeights, minWeight float64) bool {
+	if len(keywords) == 0 {
+		return false
+	}
+	tagSet := make(map[string]bool, len(m.Tags))
+	for _, t := range m.Tags {
+		tagSet[Stem(strings.ToLower(t))] = true
+	}
+	bodySet := stemTextSet(m.Title + " " + m.Body)
+	for _, kw := range keywords {
+		if idf[kw] < minWeight {
+			continue
+		}
+		if tagSet[kw] || bodySet[kw] {
+			return true
+		}
+	}
+	return false
 }
 
 // IDFWeights maps keywords to their inverse document frequency weight.

@@ -120,7 +120,7 @@ func TestBuildValueJudgeMessage_HandlesEmptyOptionalFields(t *testing.T) {
 }
 
 func TestJudgeDaydreamValue_NilEntryErrors(t *testing.T) {
-	_, _, err := JudgeDaydreamValue(nil)
+	_, _, err := JudgeDaydreamValue(nil, true, 2)
 	if err == nil {
 		t.Error("expected error for nil entry")
 	}

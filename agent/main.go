@@ -15,7 +15,7 @@ Commands:
   score        Compute and display activation scores for all memories
   retrieve     Scored retrieval with spreading activation (LLM-consumable output)
   associate    Contextual association — free-text to memory matching with enrichment detection
-  hook         Claude Code hook dispatcher (session-start, user-prompt-submit, stop)
+  hook         Agent hook dispatcher — Claude Code and Grok Build (session-start, user-prompt-submit, stop, pre-tool-use)
   rule-judge   Async behavioral-rule judge subprocess (spawned by stop hook)
   rule-firings Aggregate and display behavioral-rule firing log (see rule_firings.jsonl)
   ingestion    Book ingestion lifecycle: list / scan / sync (see Ingestion/_README.md)
@@ -41,6 +41,7 @@ Commands:
   recover-provenance  Recover frontmatter fields stripped by the round-trip bug, from backup history
   trust        Manage non-root instruction file approvals (trust approve <rel-path>)
   machines     List registered machines and tooling (see System/machines.json)
+  benchmark    Comparative evaluation harness (validate, retrieve-check, grade, …)
 
 Use "jm <command> -h" for command-specific help.
 `
@@ -121,6 +122,8 @@ func main() {
 		cmdMachines(vaultRoot, args)
 	case "metrics":
 		cmdMetrics(vaultRoot, args)
+	case "benchmark":
+		cmdBenchmark(vaultRoot, args)
 	case "-h", "--help", "help":
 		fmt.Print(usage)
 	default:

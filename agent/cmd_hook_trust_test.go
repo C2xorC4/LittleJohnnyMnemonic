@@ -269,6 +269,27 @@ func TestPreToolTrustCheck_GrepAllowed(t *testing.T) {
 	}
 }
 
+func TestPreToolTrustCheck_GrokSearchReplaceBlocked(t *testing.T) {
+	inp, _ := json.Marshal(map[string]string{"path": "/some/file.txt"})
+	if !preToolTrustCheck("search_replace", inp) {
+		t.Error("search_replace should be blocked in untrusted session")
+	}
+}
+
+func TestPreToolTrustCheck_GrokRunTerminalAllowed(t *testing.T) {
+	inp, _ := json.Marshal(map[string]string{"command": "cat /some/file.txt"})
+	if preToolTrustCheck("run_terminal_command", inp) {
+		t.Error("run_terminal_command read should not be blocked")
+	}
+}
+
+func TestPreToolTrustCheck_GrokRunTerminalJmBlocked(t *testing.T) {
+	inp, _ := json.Marshal(map[string]string{"command": "jm.exe consolidate"})
+	if !preToolTrustCheck("run_terminal_command", inp) {
+		t.Error("jm consolidate via run_terminal_command should be blocked")
+	}
+}
+
 // --- checkRepoTrust (integration — needs git) ---
 
 func TestCheckRepoTrust_NotARepo(t *testing.T) {

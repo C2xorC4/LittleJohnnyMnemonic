@@ -19,6 +19,10 @@ Metrics/
 Ingestion/manifest_*.md
 Ingestion/INDEX.md
 
+# Benchmark run output (fixture vault + tasks stay tracked)
+benchmarks/runs/*
+!benchmarks/runs/.gitkeep
+
 # ── Build artifacts and rebuildables ─────────────────────────────────────
 /jm.exe
 agent/jm
@@ -52,6 +56,10 @@ Backup/
 backups/
 *.age
 *.meta.json
+
+# ── Local-only agent/session state ───────────────────────────────────────
+terminals/
+agent-tools/
 
 # ── Local-only Claude settings (machine-specific) ────────────────────────
 .claude/settings.local.json

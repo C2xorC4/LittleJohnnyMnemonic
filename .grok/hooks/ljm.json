@@ -1,0 +1,61 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"__JM_VAULT_ROOT__/grok/bin/run-hook.ps1\" session-start",
+            "timeout": 30,
+            "env": {
+              "JM_VAULT_ROOT": "__JM_VAULT_ROOT__"
+            }
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"__JM_VAULT_ROOT__/grok/bin/run-hook.ps1\" user-prompt-submit",
+            "timeout": 30,
+            "env": {
+              "JM_VAULT_ROOT": "__JM_VAULT_ROOT__"
+            }
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "search_replace|run_terminal_command|write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"__JM_VAULT_ROOT__/grok/bin/run-hook.ps1\" pre-tool-use",
+            "timeout": 10,
+            "env": {
+              "JM_VAULT_ROOT": "__JM_VAULT_ROOT__"
+            }
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"__JM_VAULT_ROOT__/grok/bin/run-hook.ps1\" stop",
+            "timeout": 15,
+            "env": {
+              "JM_VAULT_ROOT": "__JM_VAULT_ROOT__"
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

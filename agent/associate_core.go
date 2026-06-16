@@ -15,6 +15,11 @@ type AssociateOpts struct {
 	UpdateAccess        bool
 	Enrichment          bool
 	EnrichmentMinWeight float64
+	// DiscriminatingMinIDF gates results to memories matching at least one
+	// high-IDF keyword (tag or body). Zero uses DefaultDiscriminatingMinIDF.
+	DiscriminatingMinIDF float64
+	// SkipDiscriminatingGate disables the high-IDF match requirement (tests).
+	SkipDiscriminatingGate bool
 }
 
 // AssociateMemories runs the free-text → scored memories pipeline.
@@ -54,8 +59,16 @@ func AssociateMemories(
 		return nil, nil, nil, nil
 	}
 
-	idf := ComputeIDF(keywords, memories)
+	scoringKeywords := ScoringKeywords(keywords)
+	idf := ComputeIDF(scoringKeywords, memories)
 	graph := BuildGraph(memories, cfg)
+
+	discriminatingMinIDF := DefaultDiscriminatingMinIDF
+	if opts.DiscriminatingMinIDF > 0 {
+		discriminatingMinIDF = opts.DiscriminatingMinIDF
+	}
+	applyDiscriminatingGate := !opts.SkipDiscriminatingGate &&
+		QueryHasDiscriminatingTerms(idf, scoringKeywords, discriminatingMinIDF)
 
 	var results []AssociatedMemory
 	for _, m := range memories {
@@ -65,8 +78,8 @@ func AssociateMemories(
 		// in the write-back loop below.
 
 		activation := ActivationForType(m, now, cfg)
-		tagRel := ComputeWeightedTagRelevance(m, keywords, idf)
-		bodyRel := ComputeWeightedBodyRelevance(m, keywords, idf)
+		tagRel := ComputeWeightedTagRelevance(m, scoringKeywords, idf)
+		bodyRel := ComputeWeightedBodyRelevance(m, scoringKeywords, idf)
 		combinedRel := tagRel*0.6 + bodyRel*0.4
 		if combinedRel > 1.0 {
 			combinedRel = 1.0
@@ -79,11 +92,14 @@ func AssociateMemories(
 		if combinedRel < 0.01 {
 			continue
 		}
+		if applyDiscriminatingGate && !HasDiscriminatingMatch(m, scoringKeywords, idf, discriminatingMinIDF) {
+			continue
+		}
 		if score < opts.Threshold {
 			continue
 		}
 
-		// Collect match explanations (keywords are pre-stemmed; match symmetrically).
+		// Collect match explanations (scoring keywords only — operational terms excluded).
 		var tagHits, bodyHits []string
 		stemmedTags := make(map[string]bool, len(m.Tags))
 		for _, t := range m.Tags {
@@ -91,7 +107,7 @@ func AssociateMemories(
 		}
 		bodySet := stemTextSet(m.Title + " " + m.Body)
 
-		for _, kw := range keywords {
+		for _, kw := range scoringKeywords {
 			if stemmedTags[kw] {
 				tagHits = append(tagHits, kw)
 			} else if bodySet[kw] {
@@ -101,7 +117,7 @@ func AssociateMemories(
 
 		var enrichWords []string
 		if opts.Enrichment {
-			enrichWords = FindWeightedEnrichmentKeywords(m, keywords, idf, opts.EnrichmentMinWeight)
+			enrichWords = FindWeightedEnrichmentKeywords(m, scoringKeywords, idf, opts.EnrichmentMinWeight)
 		}
 
 		results = append(results, AssociatedMemory{
@@ -170,5 +186,5 @@ func AssociateMemories(
 		}
 	}
 
-	return results, keywords, idf, nil
+	return results, scoringKeywords, idf, nil
 }

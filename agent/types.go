@@ -189,6 +189,18 @@ type Config struct {
 	DaydreamJudgeCandidates            int     `yaml:"daydream_judge_candidates"`             // top N related memories to include as context
 	DaydreamRedundancyFallbackDampening float64 `yaml:"daydream_redundancy_fallback_dampening"` // multiplier when API unavailable
 
+	// Judge transport guards — bound the resource cost of LLM judge calls
+	// (consolidation redundancy + behavioral rule judging). When no
+	// ANTHROPIC_API_KEY is set, judge calls fall back to shelling out to
+	// `claude -p`, which cold-boots a full ~320MB CLI per call. On a key-less
+	// host with frequent hooks + scheduled autodream, those spawns swarm and
+	// exhaust memory. JudgeCLIFallbackEnabled=false is the kill switch: judges
+	// degrade to heuristics instead of spawning CLIs. JudgeCLIMaxConcurrent
+	// host-wide-caps simultaneous `claude -p` judge processes when the
+	// fallback IS enabled (over-cap calls degrade to heuristics, never block).
+	JudgeCLIFallbackEnabled bool `yaml:"judge_cli_fallback_enabled"`
+	JudgeCLIMaxConcurrent   int  `yaml:"judge_cli_max_concurrent"`
+
 	// Auto-daydream — autonomous background daydreams, jitter-scheduled, opt-in.
 	// See Config.md "## Auto Daydream" for the full spec. Two modes (active/quiet)
 	// with mode-aware seed weighting; quiet mode mixes exploration and CLS-style
@@ -221,6 +233,12 @@ type Config struct {
 	AutoDaydreamSurfaceMaxPerPrompt          int                `yaml:"auto_daydream_surface_max_per_prompt"`
 	AutoDaydreamLogRotationThreshold         int                `yaml:"auto_daydream_log_rotation_threshold"`
 	AutoDaydreamValueJudgeEnabled            bool               `yaml:"auto_daydream_value_judge_enabled"`
+
+	// Daydream dispatch — host-aware volley vs scheduler coordination.
+	DaydreamSchedulerHost              string `yaml:"daydream_scheduler_host"`                // preferred headless host when vault idle (default claude-code)
+	DaydreamSchedulerMissingInvoker    string `yaml:"daydream_scheduler_missing_invoker"`     // skip (hard) when preferred host has no headless invoker
+	DaydreamVolleyPolicy               string `yaml:"daydream_volley_policy"`                 // delegate_active | disabled
+	DaydreamVolleyCommitmentTTLMinutes int    `yaml:"daydream_volley_commitment_ttl_minutes"` // scheduler defer while nudge pending
 
 	// Associative retrieval
 	SpreadingActivationFactor float64            `yaml:"spreading_activation_factor"`
@@ -362,6 +380,9 @@ func DefaultConfig() Config {
 		DaydreamJudgeCandidates:             3,
 		DaydreamRedundancyFallbackDampening: 0.3,
 
+		JudgeCLIFallbackEnabled: true,
+		JudgeCLIMaxConcurrent:   2,
+
 		AutoDaydreamEnabled:                      false,
 		AutoDaydreamIntervalMinMinutes:           60,
 		AutoDaydreamIntervalMaxMinutes:           180,
@@ -369,7 +390,7 @@ func DefaultConfig() Config {
 		AutoDaydreamMaxPerDayQuiet:               6,
 		AutoDaydreamQuietHours:                   "",
 		AutoDaydreamQuietHoursTimezone:           "local",
-		AutoDaydreamActiveSkipWindowMinutes:      0,
+		AutoDaydreamActiveSkipWindowMinutes:      45,
 		AutoDaydreamQuietSkipWindowMinutes:       60,
 		AutoDaydreamActivitySources:              []string{"buffer", "heartbeat"},
 		AutoDaydreamActiveSeedSources: map[string]float64{
@@ -403,6 +424,11 @@ func DefaultConfig() Config {
 		AutoDaydreamSurfaceMaxPerPrompt:          4,
 		AutoDaydreamLogRotationThreshold:         1000,
 		AutoDaydreamValueJudgeEnabled:            true,
+
+		DaydreamSchedulerHost:              HostClaudeCode,
+		DaydreamSchedulerMissingInvoker:    DaydreamSchedulerMissingInvokerSkip,
+		DaydreamVolleyPolicy:               DaydreamVolleyPolicyDelegateActive,
+		DaydreamVolleyCommitmentTTLMinutes: 20,
 
 		SpreadingActivationFactor: 0.3,
 		MaxActivationHops:         1,

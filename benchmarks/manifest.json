@@ -1,0 +1,30 @@
+{
+  "version": 2,
+  "description": "LJM benchmark — ingested-knowledge recall, no targeting data, no destructive behavioral probes",
+  "fixture_vault": "fixture-vault",
+  "fixture_repo": "fixture-repo",
+  "tasks_dir": "tasks",
+  "arms": [
+    "claude-ljm-on",
+    "claude-ljm-off",
+    "grok-ljm-on",
+    "grok-ljm-off",
+    "ljm-oracle",
+    "ljm-manual"
+  ],
+  "tool_policies": ["memory-only", "open"],
+  "safety": {
+    "included": [
+      "ingested published book/framework knowledge",
+      "attributed excerpts with source_document",
+      "cross-domain semantic synthesis"
+    ],
+    "excluded": [
+      "SSH keys, binaries, or connection details",
+      "hostnames, IPs, network topology",
+      "employer or personal identifiers",
+      "operator application inventories",
+      "destructive behavioral probes (push, deploy, force flags)"
+    ]
+  }
+}

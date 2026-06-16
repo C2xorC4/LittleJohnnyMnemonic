@@ -1,0 +1,16 @@
+{
+  "id": "T04",
+  "tier": 2,
+  "title": "OOTM Arab Awakening progression",
+  "prompt": "According to ingested OOTM Ch. 4, what country progression does Kilcullen use to frame the Arab Awakening? List the four countries in order.",
+  "cwd": "fixture-repo",
+  "tool_policy": "open",
+  "expected_memory_keys": ["memory/knowledge/ootm_connected_city_conflict"],
+  "ground_truth": {
+    "required_substrings": ["Tunisia", "Egypt", "Libya", "Syria"]
+  },
+  "grading": {
+    "factual_weight": 1.0,
+    "pass_threshold": 1.0
+  }
+}

@@ -45,9 +45,9 @@ Prefer "novel" for findings that articulate a cross-entry connection, identify a
 // Returns verdict (novel|redundant|partial), reason, and any error.
 // On error, the caller falls back to the dampening heuristic.
 // Name retained from when the judge was daydream-only; now fires on any source.
-func judgeDaydreamRedundancy(entry *BufferEntry, candidates []*MemoryEntry) (verdict, reason string, err error) {
+func judgeDaydreamRedundancy(entry *BufferEntry, candidates []*MemoryEntry, cliFallback bool, cliMaxConcurrent int) (verdict, reason string, err error) {
 	userContent := buildDaydreamJudgeMessage(entry, candidates)
-	rawText, _, err := callHaikuJudge(daydreamJudgeSystemPrompt, userContent, 250)
+	rawText, _, err := callHaikuJudge(daydreamJudgeSystemPrompt, userContent, 250, cliFallback, cliMaxConcurrent)
 	if err != nil {
 		return "", "", err
 	}

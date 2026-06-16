@@ -1,0 +1,21 @@
+{
+  "id": "T06",
+  "tier": 2,
+  "title": "APT competitive control bridge",
+  "prompt": "In our cross-domain semantic entry linking APT operations to Kilcullen, what cyber activity maps to the 'administration' mechanism on the competitive control spectrum?",
+  "cwd": "fixture-repo",
+  "tool_policy": "memory-only",
+  "expected_memory_keys": ["memory/semantic/apt_competitive_control_bridge"],
+  "ground_truth": {
+    "required_substrings_any": [
+      "access management",
+      "sustained access",
+      "persistence",
+      "policy-shaped persistence"
+    ]
+  },
+  "grading": {
+    "factual_weight": 1.0,
+    "pass_threshold": 1.0
+  }
+}

@@ -105,7 +105,7 @@ func cmdRetrieve(vaultRoot string, args []string) {
 		} else {
 			// Opportunistic pruning — keeps log bounded without a separate command.
 			if cfg.RetrievalSessionLogRetentionDays > 0 {
-				_, _ = PruneRetrievalSessions(vaultRoot, cfg.RetrievalSessionLogRetentionDays)
+				MaybePruneRetrievalSessions(vaultRoot, cfg.RetrievalSessionLogRetentionDays)
 			}
 		}
 	}

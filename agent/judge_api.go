@@ -35,11 +35,39 @@ const (
 	judgeTransportDisabled judgeTransport = "disabled"
 )
 
+// judgeCLIDisableEnvVar, when set to any non-empty value, hard-disables the
+// Tier-2 `claude -p` judge fallback regardless of config. Two uses:
+//   - test isolation: TestMain sets it so `go test` never cold-boots a real
+//     CLI (the consolidation/rule-judge spawn tests re-exec the test binary,
+//     which would otherwise run live judges and swarm the host); the value is
+//     inherited by those detached subprocesses.
+//   - ops escape hatch: stop CLI judge spawns on a host without editing config.
+const judgeCLIDisableEnvVar = "LJM_NO_JUDGE_CLI"
+
+// judgeTransportAvailable reports whether any judge transport can actually
+// produce a verdict: a direct API key, or the CLI fallback when enabled. When
+// neither is available, callers should skip spawning judge subprocesses
+// entirely rather than spawn a process that will only log an error verdict.
+func judgeTransportAvailable(cfg Config) bool {
+	if os.Getenv("ANTHROPIC_API_KEY") != "" {
+		return true
+	}
+	// No API key: the only remaining transport is the CLI fallback, which the
+	// env hard-disable overrides regardless of config.
+	return cfg.JudgeCLIFallbackEnabled && os.Getenv(judgeCLIDisableEnvVar) == ""
+}
+
 // callHaikuJudge runs a single-shot Haiku-class completion for judge workflows.
 // Returns the model's raw text response and which transport produced it.
 // On both transports failing, returns an error; the caller is expected to
 // fall back to a heuristic path.
-func callHaikuJudge(systemPrompt, userMessage string, maxTokens int) (rawText string, via judgeTransport, err error) {
+//
+// cliFallback gates Tier 2 (the `claude -p` shell-out). When false and no API
+// key is present, the function returns an error immediately so the caller
+// degrades to heuristics instead of cold-booting a CLI (the kill switch).
+// cliMaxConcurrent host-wide-caps simultaneous CLI judge processes; an
+// over-cap call returns an error (degrade) rather than spawning or blocking.
+func callHaikuJudge(systemPrompt, userMessage string, maxTokens int, cliFallback bool, cliMaxConcurrent int) (rawText string, via judgeTransport, err error) {
 	// Tier 1: direct API call via ANTHROPIC_API_KEY
 	if apiKey := os.Getenv("ANTHROPIC_API_KEY"); apiKey != "" {
 		text, err := callHaikuViaAPI(apiKey, systemPrompt, userMessage, maxTokens)
@@ -52,7 +80,18 @@ func callHaikuJudge(systemPrompt, userMessage string, maxTokens int) (rawText st
 		fmt.Fprintf(os.Stderr, "[jm judge] API tier failed, trying CLI: %v\n", err)
 	}
 
-	// Tier 2: shell out to `claude` CLI (uses Claude Code's stored auth)
+	// Tier 2: shell out to `claude` CLI (uses Claude Code's stored auth).
+	// Gated by the kill switch (config), the env hard-disable (tests/ops), and
+	// bounded by the host-wide concurrency cap.
+	if !cliFallback || os.Getenv(judgeCLIDisableEnvVar) != "" {
+		return "", judgeTransportDisabled, fmt.Errorf("judge CLI fallback disabled and no API key set")
+	}
+	release, ok := acquireJudgeCLISlot(cliMaxConcurrent)
+	if !ok {
+		return "", judgeTransportDisabled, fmt.Errorf("judge CLI concurrency cap (%d) reached", cliMaxConcurrent)
+	}
+	defer release()
+
 	text, err := callHaikuViaCLI(systemPrompt, userMessage, maxTokens)
 	if err == nil {
 		return text, judgeTransportCLI, nil
@@ -144,6 +183,7 @@ func callHaikuViaCLI(systemPrompt, userMessage string, maxTokens int) (string, e
 	// --model pins to Haiku-class for cost/speed parity with the API path.
 	// -p is non-interactive print mode.
 	cmd := exec.CommandContext(ctx, claudeBin, "-p", "--model", judgeModel, combined)
+	cmd.Env = append(os.Environ(), InternalInvocationEnvVar+"=1")
 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout

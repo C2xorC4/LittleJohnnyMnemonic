@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -348,5 +349,38 @@ func TestWriteAndReadAutoConsolidationSuspended(t *testing.T) {
 	}
 	if !since.Equal(now) {
 		t.Errorf("since: got %v, want %v", since, now)
+	}
+}
+
+func TestHookInputNormalize_GrokAliases(t *testing.T) {
+	raw := `{
+		"hookEventName": "user_prompt_submit",
+		"sessionId": "sess-grok-1",
+		"workspaceRoot": "D:/projects/demo",
+		"userPrompt": "build the feature",
+		"toolName": "search_replace",
+		"toolInput": {"path": "foo.go"},
+		"transcriptPath": "/tmp/transcript.jsonl"
+	}`
+	var input hookInput
+	if err := json.Unmarshal([]byte(raw), &input); err != nil {
+		t.Fatal(err)
+	}
+	input.normalize()
+
+	if input.SessionID != "sess-grok-1" {
+		t.Errorf("SessionID: got %q", input.SessionID)
+	}
+	if input.Cwd != "D:/projects/demo" {
+		t.Errorf("Cwd: got %q", input.Cwd)
+	}
+	if input.Prompt != "build the feature" {
+		t.Errorf("Prompt: got %q", input.Prompt)
+	}
+	if input.ToolName != "search_replace" {
+		t.Errorf("ToolName: got %q", input.ToolName)
+	}
+	if input.TranscriptPath != "/tmp/transcript.jsonl" {
+		t.Errorf("TranscriptPath: got %q", input.TranscriptPath)
 	}
 }

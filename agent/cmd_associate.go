@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"strings"
-	"time"
 )
 
 func cmdAssociate(vaultRoot string, args []string) {
@@ -74,162 +73,26 @@ func cmdAssociate(vaultRoot string, args []string) {
 		os.Exit(1)
 	}
 
-	cfg := DefaultConfig()
-	now := time.Now()
+	opts := AssociateOpts{
+		Limit:               *limit,
+		Threshold:           *threshold,
+		UpdateAccess:        !*noUpdate,
+		Enrichment:          *enrichment,
+		EnrichmentMinWeight: 0.3,
+	}
 
-	memories, err := LoadAllMemories(vaultRoot)
+	results, keywords, idf, err := AssociateMemories(vaultRoot, contextText, opts)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "[!] Failed to load memories: %v\n", err)
+		fmt.Fprintf(os.Stderr, "[!] Associate failed: %v\n", err)
 		os.Exit(1)
 	}
-
-	if len(memories) == 0 {
-		fmt.Println("No memories to associate against.")
-		return
-	}
-
-	// Extract keywords from free text
-	keywords := ExtractKeywords(contextText)
 	if len(keywords) == 0 {
 		fmt.Println("No meaningful keywords extracted from context.")
 		return
 	}
-
-	// Compute IDF weights for keyword specificity
-	idf := ComputeIDF(keywords, memories)
-
-	// Score with IDF-weighted relevance (tags + body matching)
-	var results []AssociatedMemory
-
-	// Build graph for spreading activation
-	graph := BuildGraph(memories, cfg)
-
-	for _, m := range memories {
-		var activation float64
-		if m.Type == TypeKnowledge {
-			activation = 1.0 // Knowledge entries don't decay with time
-		} else {
-			activation = ComputeActivation(m, now)
-		}
-		tagRel := ComputeWeightedTagRelevance(m, keywords, idf)
-		bodyRel := ComputeWeightedBodyRelevance(m, keywords, idf)
-		combinedRel := tagRel*0.6 + bodyRel*0.4
-		if combinedRel > 1.0 {
-			combinedRel = 1.0
-		}
-
-		surprise := ComputeSurpriseBonus(m, cfg)
-		score := activation*combinedRel*m.Confidence + surprise
-
-		// Require at least some topical relevance — pure activation without
-		// any keyword match isn't a meaningful association
-		if combinedRel < 0.01 {
-			continue
-		}
-		if score < *threshold {
-			continue
-		}
-
-		// Find specific matches for explanation (keywords are pre-stemmed; match symmetrically).
-		var tagHits, bodyHits []string
-		stemmedTags := make(map[string]bool, len(m.Tags))
-		for _, t := range m.Tags {
-			stemmedTags[Stem(strings.ToLower(t))] = true
-		}
-		bodySet := stemTextSet(m.Title + " " + m.Body)
-
-		for _, kw := range keywords {
-			if stemmedTags[kw] {
-				tagHits = append(tagHits, kw)
-			} else if bodySet[kw] {
-				bodyHits = append(bodyHits, kw)
-			}
-		}
-
-		var enrichWords []string
-		if *enrichment {
-			// Only suggest discriminating terms as enrichment (IDF ≥ 0.3)
-			enrichWords = FindWeightedEnrichmentKeywords(m, keywords, idf, 0.3)
-		}
-
-		results = append(results, AssociatedMemory{
-			Memory:          m,
-			Score:           score,
-			Activation:      activation,
-			Relevance:       combinedRel,
-			BodyRelevance:   bodyRel,
-			TagMatches:      tagHits,
-			BodyKeywordHits: bodyHits,
-			EnrichmentWords: enrichWords,
-		})
-	}
-
-	// Apply spreading activation boost
-	if len(results) > 0 {
-		// Convert to ScoredMemory for graph boosting, then merge back
-		scoredForGraph := make([]ScoredMemory, len(results))
-		for i, r := range results {
-			scoredForGraph[i] = ScoredMemory{
-				Memory: r.Memory,
-				Total:  r.Score,
-			}
-		}
-		boosted := ApplySpreadingActivation(scoredForGraph, graph, cfg)
-
-		// Merge boost back and re-sort
-		boostMap := make(map[string]float64)
-		for _, b := range boosted {
-			boostMap[b.Memory.FilePath] = b.Boost
-		}
-		for i := range results {
-			if boost, ok := boostMap[results[i].Memory.FilePath]; ok {
-				results[i].Score += boost
-			}
-		}
-	}
-
-	// Sort descending by score
-	for i := 0; i < len(results); i++ {
-		for j := i + 1; j < len(results); j++ {
-			if results[j].Score > results[i].Score {
-				results[i], results[j] = results[j], results[i]
-			}
-		}
-	}
-
-	// Cap
-	if len(results) > *limit {
-		results = results[:*limit]
-	}
-
 	if len(results) == 0 {
 		fmt.Printf("No memories associated with: %s\n", contextText)
 		return
-	}
-
-	// Update access metadata and record co-activations
-	if !*noUpdate {
-		var coactivatedKeys []string
-		accessKeys := make([]string, 0, len(results))
-		for _, r := range results {
-			k := normalizeKey(r.Memory)
-			accessKeys = append(accessKeys, k)
-			coactivatedKeys = append(coactivatedKeys, k)
-		}
-		if err := recordAccessBatch(vaultRoot, accessKeys, now); err != nil {
-			fmt.Fprintf(os.Stderr, "[!] Failed to record access: %v\n", err)
-		}
-
-		// Record co-activation for edge learning
-		coLog, err := LoadCoactivation(vaultRoot)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "[!] Failed to load coactivation log: %v\n", err)
-		} else {
-			RecordCoactivation(coLog, coactivatedKeys, contextText, 5)
-			if err := SaveCoactivation(vaultRoot, coLog); err != nil {
-				fmt.Fprintf(os.Stderr, "[!] Failed to save coactivation log: %v\n", err)
-			}
-		}
 	}
 
 	// Output

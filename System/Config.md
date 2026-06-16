@@ -69,21 +69,44 @@ related memories as context. Verdict drives the decision:
 
 Judge model: same Haiku-class model used by the Stop hook's rule judge.
 
-**Transport fallback tiers** (shared with behavioral-rule judge):
-1. `ANTHROPIC_API_KEY` env var present → direct Anthropic API call (fastest)
+**Transport fallback tiers** (shared with behavioral-rule judge and the
+daydream value judge — all route through `callHaikuJudge`):
+1. `ANTHROPIC_API_KEY` env var present → direct Anthropic API call (fastest, cheapest)
 2. `claude` CLI on PATH → invoked with `-p --model` using Claude Code's stored auth
 3. Neither → heuristic fallback applies (`daydream_redundancy_fallback_dampening`)
 
 Machines that export an API key get direct API calls. Machines that only run
-Claude Code interactively (no env var) still get judge functionality via the
+Claude Code interactively (no env var) can still get judge functionality via the
 CLI fallback. Machines without either degrade to pure heuristics rather than
 failing outright.
+
+**⚠ CLI fallback resource cost.** Tier 2 cold-boots a *full* `claude -p`
+process (~320 MB resident) per judge call. On a key-less host the judge fires
+from every Stop hook (per turn), every rule fire, consolidation (per buffer
+entry), and the scheduled autodream — with no natural bound those processes
+swarm and exhaust memory. Two guards bound this:
+
+- `judge_cli_fallback_enabled` — **kill switch.** When `false` and no API key
+  is set, judges skip Tier 2 entirely and degrade to heuristics (no `claude -p`
+  spawns at all). The Stop hook also stops spawning `jm rule-judge`
+  subprocesses when no transport is available.
+- `judge_cli_max_concurrent` — host-wide cap on simultaneous `claude -p` judge
+  processes when the fallback IS enabled. Over-cap calls degrade to heuristics
+  rather than spawning or blocking (filesystem semaphore in `$TMPDIR/jm-judge-slots`).
+
+> **This host (subscription auth, no API key): kill switch is ON**
+> (`judge_cli_fallback_enabled: false`). Judge quality is covered by
+> session-driven daydreams (Claude + Grok). Flip back to `true` (or set
+> `ANTHROPIC_API_KEY`) to restore autonomous LLM judging; the concurrency cap
+> then keeps the CLI path bounded.
 
 ```yaml
 daydream_judge_enabled: true
 daydream_judge_threshold: 0.4               # min tag-overlap redundancy to trigger judge
 daydream_judge_candidates: 3                # top N related memories sent to judge as context
 daydream_redundancy_fallback_dampening: 0.3 # multiplier when API call fails (equivalent to Option B)
+judge_cli_fallback_enabled: false           # KILL SWITCH ON: no `claude -p` judge spawns (no API key on this host)
+judge_cli_max_concurrent: 2                  # host-wide cap on `claude -p` judges when fallback is re-enabled
 ```
 
 ## Context Integrity

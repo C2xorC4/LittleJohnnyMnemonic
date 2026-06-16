@@ -21,6 +21,16 @@ func cmdConsolidate(vaultRoot string, args []string) {
 	ApplyConfigCompressionThresholds(cfg)
 	now := time.Now()
 
+	// Single-flight: only one consolidation per vault at a time. Prevents
+	// overlapping detached runs (rapid Stop hooks + scheduled autodream) from
+	// re-scanning the same buffer and stacking judge subprocesses.
+	releaseLock, ok := acquireConsolidationLock(vaultRoot)
+	if !ok {
+		fmt.Println("Another consolidation is already in progress — skipping.")
+		return
+	}
+	defer releaseLock()
+
 	consolidationDepth := cfg.ConsolidationDepth
 	if *depth != "" {
 		consolidationDepth = *depth
@@ -427,7 +437,7 @@ func assessBufferEntry(entry *BufferEntry, memories []*MemoryEntry, cfg Config, 
 	//   fallback  → API unavailable; apply DaydreamRedundancyFallbackDampening
 	if cfg.DaydreamJudgeEnabled && assessment.Redundancy >= cfg.DaydreamJudgeThreshold {
 		candidates := findTopRelatedMemories(entry, memories, cfg.DaydreamJudgeCandidates)
-		verdict, reason, jerr := judgeDaydreamRedundancy(entry, candidates)
+		verdict, reason, jerr := judgeDaydreamRedundancy(entry, candidates, cfg.JudgeCLIFallbackEnabled, cfg.JudgeCLIMaxConcurrent)
 		if jerr != nil {
 			// Fallback path: apply dampening so scoring isn't pathological when API is down.
 			assessment.DaydreamVerdict = "fallback"
@@ -455,7 +465,7 @@ func assessBufferEntry(entry *BufferEntry, memories []*MemoryEntry, cfg Config, 
 	// signals during task focus). Fires AFTER redundancy judge so we don't pay
 	// twice for an entry we'd discard anyway.
 	if cfg.AutoDaydreamValueJudgeEnabled && IsDaydreamSourced(entry) && isExplorationOrRefine(entry) {
-		valueVerdict, valueReason, vErr := daydreamValueJudgeFn(entry)
+		valueVerdict, valueReason, vErr := daydreamValueJudgeFn(entry, cfg.JudgeCLIFallbackEnabled, cfg.JudgeCLIMaxConcurrent)
 		if vErr == nil {
 			assessment.DaydreamValueVerdict = valueVerdict
 			assessment.DaydreamValueReason = valueReason

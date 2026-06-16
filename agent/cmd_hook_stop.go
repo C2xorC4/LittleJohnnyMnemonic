@@ -26,6 +26,16 @@ func runStop(vaultRoot string, input *hookInput) {
 		spawnConsolidationIfNeeded(vaultRoot, cfg)
 	}()
 
+	// Adaptive-edge loop closure: harvest Memory/ citations from the last
+	// assistant turn against the preceding prompt-submit retrieval session.
+	harvestCitationsFromStop(vaultRoot, input)
+
+	// Try volley fulfillment at Stop; release is deferred to UserPromptSubmit
+	// on Grok where the transcript is not flushed yet (see citation harvest).
+	if err := tryFulfillVolleyCommitmentOnStop(vaultRoot, input.SessionID, time.Now(), input); err != nil {
+		fmt.Fprintf(os.Stderr, "[jm hook] stop: volley commitment: %v\n", err)
+	}
+
 	rules, err := loadBehavioralRules(vaultRoot)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "[jm hook] stop: load rules: %v\n", err)
@@ -47,6 +57,11 @@ func runStop(vaultRoot string, input *hookInput) {
 	if turn == "" {
 		return
 	}
+
+	// If no judge transport can run (no API key and CLI fallback disabled),
+	// skip spawning judge subprocesses — they would only cold-start and log an
+	// error verdict. Pattern firings are still recorded below for accounting.
+	judgeOK := judgeTransportAvailable(LoadConfig(vaultRoot))
 
 	for _, rule := range rules {
 		fireHits := scanForFireSignals(turn, rule)
@@ -72,15 +87,25 @@ func runStop(vaultRoot string, input *hookInput) {
 			continue
 		}
 
-		spawnJudge(vaultRoot, rule, patternRecord)
+		if judgeOK {
+			spawnJudge(vaultRoot, rule, patternRecord)
+		}
 	}
 }
 
-// lastAssistantTurn scans a Claude Code transcript JSONL file from the
-// beginning and returns the text of the last assistant message. The format
-// is one JSON event per line. Assistant text events vary slightly by
-// transcript version, so this parser is intentionally permissive.
+// lastAssistantTurn returns the final assistant text from a transcript JSONL
+// file. Supports Claude Code transcripts, Grok chat_history.jsonl, and Grok
+// updates.jsonl (agent_message_chunk aggregation for the last user turn).
 func lastAssistantTurn(transcriptPath string) (string, error) {
+	switch {
+	case transcriptLooksLikeGrokUpdates(transcriptPath):
+		return lastAssistantTurnFromGrokUpdates(transcriptPath)
+	default:
+		return lastAssistantTurnFromJSONL(transcriptPath)
+	}
+}
+
+func lastAssistantTurnFromJSONL(transcriptPath string) (string, error) {
 	file, err := os.Open(transcriptPath)
 	if err != nil {
 		return "", err
@@ -100,6 +125,9 @@ func lastAssistantTurn(transcriptPath string) (string, error) {
 		if err := json.Unmarshal(line, &event); err != nil {
 			continue
 		}
+		if isSkippedTranscriptEvent(event) {
+			continue
+		}
 		if !isAssistantEvent(event) {
 			continue
 		}
@@ -111,6 +139,71 @@ func lastAssistantTurn(transcriptPath string) (string, error) {
 		return "", err
 	}
 	return lastText, nil
+}
+
+// lastAssistantTurnFromGrokUpdates aggregates agent_message_chunk text after
+// the final user_message_chunk in a Grok updates.jsonl stream.
+func lastAssistantTurnFromGrokUpdates(transcriptPath string) (string, error) {
+	file, err := os.Open(transcriptPath)
+	if err != nil {
+		return "", err
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	scanner.Buffer(make([]byte, 0, 64*1024), 16*1024*1024)
+
+	var chunks []string
+	sawUser := false
+	for scanner.Scan() {
+		line := scanner.Bytes()
+		if len(line) == 0 {
+			continue
+		}
+		var root map[string]any
+		if err := json.Unmarshal(line, &root); err != nil {
+			continue
+		}
+		params, _ := root["params"].(map[string]any)
+		if params == nil {
+			continue
+		}
+		update, _ := params["update"].(map[string]any)
+		if update == nil {
+			continue
+		}
+		kind, _ := update["sessionUpdate"].(string)
+		switch kind {
+		case "user_message_chunk":
+			sawUser = true
+			chunks = nil
+		case "agent_message_chunk":
+			if !sawUser {
+				continue
+			}
+			content, _ := update["content"].(map[string]any)
+			if content == nil {
+				continue
+			}
+			if text, ok := content["text"].(string); ok && text != "" {
+				chunks = append(chunks, text)
+			}
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return "", err
+	}
+	return strings.Join(chunks, ""), nil
+}
+
+func isSkippedTranscriptEvent(event map[string]any) bool {
+	if t, ok := event["type"].(string); ok {
+		switch t {
+		case "user", "tool_result", "reasoning":
+			return true
+		}
+	}
+	return false
 }
 
 func isAssistantEvent(event map[string]any) bool {

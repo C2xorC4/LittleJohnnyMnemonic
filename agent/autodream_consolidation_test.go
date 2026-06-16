@@ -12,7 +12,7 @@ import (
 // withFakeValueJudge swaps the package-level daydreamValueJudgeFn for the
 // duration of a test, restoring the real function on cleanup. Lets tests
 // drive the value-judge routing without hitting the API.
-func withFakeValueJudge(t *testing.T, fn func(*BufferEntry) (ValueVerdict, string, error)) {
+func withFakeValueJudge(t *testing.T, fn func(*BufferEntry, bool, int) (ValueVerdict, string, error)) {
 	t.Helper()
 	saved := daydreamValueJudgeFn
 	daydreamValueJudgeFn = fn
@@ -58,7 +58,7 @@ func TestAssessBufferEntry_PriorityCriticalAlsoPromotes(t *testing.T) {
 }
 
 func TestAssessBufferEntry_ReplayRefineGetsBonus(t *testing.T) {
-	withFakeValueJudge(t, func(*BufferEntry) (ValueVerdict, string, error) {
+	withFakeValueJudge(t, func(*BufferEntry, bool, int) (ValueVerdict, string, error) {
 		return ValueMarginal, "test-marginal", nil
 	})
 	cfg := DefaultConfig()
@@ -85,7 +85,7 @@ func TestAssessBufferEntry_ReplayRefineGetsBonus(t *testing.T) {
 }
 
 func TestAssessBufferEntry_ValueJudgeLowValueDiscards(t *testing.T) {
-	withFakeValueJudge(t, func(*BufferEntry) (ValueVerdict, string, error) {
+	withFakeValueJudge(t, func(*BufferEntry, bool, int) (ValueVerdict, string, error) {
 		return ValueLowValue, "vague gesture, no claim", nil
 	})
 	cfg := DefaultConfig()
@@ -112,7 +112,7 @@ func TestAssessBufferEntry_ValueJudgeLowValueDiscards(t *testing.T) {
 }
 
 func TestAssessBufferEntry_ValueJudgeValuableFloors(t *testing.T) {
-	withFakeValueJudge(t, func(*BufferEntry) (ValueVerdict, string, error) {
+	withFakeValueJudge(t, func(*BufferEntry, bool, int) (ValueVerdict, string, error) {
 		return ValueValuable, "concrete connection identified", nil
 	})
 	cfg := DefaultConfig()
@@ -138,7 +138,7 @@ func TestAssessBufferEntry_ValueJudgeValuableFloors(t *testing.T) {
 }
 
 func TestAssessBufferEntry_ValueJudgeMarginalUnchanged(t *testing.T) {
-	withFakeValueJudge(t, func(*BufferEntry) (ValueVerdict, string, error) {
+	withFakeValueJudge(t, func(*BufferEntry, bool, int) (ValueVerdict, string, error) {
 		return ValueMarginal, "real concept but vague", nil
 	})
 	cfg := DefaultConfig()
@@ -163,7 +163,7 @@ func TestAssessBufferEntry_ValueJudgeMarginalUnchanged(t *testing.T) {
 
 func TestAssessBufferEntry_ValueJudgeSkippedForNonDaydream(t *testing.T) {
 	called := false
-	withFakeValueJudge(t, func(*BufferEntry) (ValueVerdict, string, error) {
+	withFakeValueJudge(t, func(*BufferEntry, bool, int) (ValueVerdict, string, error) {
 		called = true
 		return ValueLowValue, "should not be called", nil
 	})
@@ -184,7 +184,7 @@ func TestAssessBufferEntry_ValueJudgeSkippedForNonDaydream(t *testing.T) {
 
 func TestAssessBufferEntry_ValueJudgeDisabledByConfig(t *testing.T) {
 	called := false
-	withFakeValueJudge(t, func(*BufferEntry) (ValueVerdict, string, error) {
+	withFakeValueJudge(t, func(*BufferEntry, bool, int) (ValueVerdict, string, error) {
 		called = true
 		return ValueLowValue, "should not be called", nil
 	})
@@ -206,7 +206,7 @@ func TestAssessBufferEntry_ValueJudgeDisabledByConfig(t *testing.T) {
 }
 
 func TestAssessBufferEntry_ValueJudgeErrorFallsThrough(t *testing.T) {
-	withFakeValueJudge(t, func(*BufferEntry) (ValueVerdict, string, error) {
+	withFakeValueJudge(t, func(*BufferEntry, bool, int) (ValueVerdict, string, error) {
 		return "", "", os.ErrPermission // simulated judge failure
 	})
 	cfg := DefaultConfig()

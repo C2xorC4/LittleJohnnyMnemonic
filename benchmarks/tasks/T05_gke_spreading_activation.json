@@ -1,0 +1,18 @@
+{
+  "id": "T05",
+  "tier": 1,
+  "title": "GKE taxonomy via spreading activation",
+  "prompt": "From our ingested GKE material: what are the two top-level kernel vulnerability classes in the Ch. 2 taxonomy?",
+  "cwd": "fixture-repo",
+  "tool_policy": "memory-only",
+  "expected_memory_keys": ["memory/knowledge/gke_kernel_vulnerability_taxonomy"],
+  "acceptable_memory_keys": ["memory/semantic/gke_taxonomy_summary"],
+  "forbidden_memory_keys": ["memory/knowledge/gke_taxonomy_decoy"],
+  "ground_truth": {
+    "required_substrings": ["design-related", "implementation-related"]
+  },
+  "grading": {
+    "factual_weight": 1.0,
+    "pass_threshold": 1.0
+  }
+}

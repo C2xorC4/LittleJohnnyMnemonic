@@ -1,0 +1,18 @@
+{
+  "id": "T07",
+  "tier": 1,
+  "title": "GKE taxonomy decoy resistance",
+  "prompt": "Quick check: what are the two top-level classes in the published GKE Ch. 2 kernel vulnerability taxonomy?",
+  "cwd": "fixture-repo",
+  "tool_policy": "memory-only",
+  "expected_memory_keys": ["memory/knowledge/gke_kernel_vulnerability_taxonomy"],
+  "forbidden_memory_keys": ["memory/knowledge/gke_taxonomy_decoy"],
+  "ground_truth": {
+    "required_substrings": ["design-related", "implementation-related"],
+    "forbidden_substrings": ["syntactic", "semantic"]
+  },
+  "grading": {
+    "factual_weight": 1.0,
+    "pass_threshold": 1.0
+  }
+}

@@ -666,12 +666,14 @@ func TestRunAutodream_NoCapBypassesDailyCap(t *testing.T) {
 	}
 }
 
-func TestRunAutodream_ActiveModeIgnoresActivitySkipByDefault(t *testing.T) {
+func TestRunAutodream_ActiveModeRespectsActivitySkipByDefault(t *testing.T) {
 	vault := runVault(t)
 	now := time.Date(2026, 4, 30, 14, 0, 0, 0, time.UTC)
 
-	// Heartbeat 1 minute ago — would skip in quiet mode, but active default is window=0
-	if err := writeSessionHeartbeat(vault, "s", "/c", now.Add(-1*time.Minute)); err != nil {
+	if err := writeSessionHeartbeatEx(vault, "s", "/c", now.Add(-1*time.Minute), &HeartbeatOpts{
+		RuntimeHost: HostGrokBuild,
+		Event:       "user-prompt-submit",
+	}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -683,8 +685,11 @@ func TestRunAutodream_ActiveModeIgnoresActivitySkipByDefault(t *testing.T) {
 		Invoker:   fakeInvoker("ok"),
 	}
 	res := RunAutodream(in)
-	if res.Decision != decisionFired {
-		t.Errorf("Decision = %s, want fired (active mode default skip window is 0); reason=%q", res.Decision, res.Reason)
+	if res.Decision != decisionSkipped {
+		t.Fatalf("Decision = %s, want skipped (active mode default skip window is 45m); reason=%q", res.Decision, res.Reason)
+	}
+	if res.SkipCategory != SkipActivityRecent {
+		t.Errorf("SkipCategory = %q, want %q", res.SkipCategory, SkipActivityRecent)
 	}
 }
 
@@ -712,8 +717,11 @@ func TestRunAutodream_QuietModeRespectsActivitySkip(t *testing.T) {
 	if res.Decision != decisionSkipped {
 		t.Fatalf("Decision = %s, want skipped (activity within window); reason=%q", res.Decision, res.Reason)
 	}
-	if !strings.Contains(res.Reason, "activity") {
-		t.Errorf("Reason = %q, want mention of activity", res.Reason)
+	if res.SkipCategory != SkipActivityRecent {
+		t.Errorf("SkipCategory = %q, want %q", res.SkipCategory, SkipActivityRecent)
+	}
+	if !strings.Contains(res.Reason, "active session") {
+		t.Errorf("Reason = %q, want mention of active session", res.Reason)
 	}
 }
 

@@ -12,26 +12,64 @@ import (
 	"time"
 )
 
-// hookInput is the JSON schema Claude Code passes on stdin to hook commands.
-// Only the fields we care about are decoded — the rest is ignored.
+// hookInput is the JSON schema Claude Code and Grok Build pass on stdin to hook
+// commands. Both snake_case (Claude) and camelCase (Grok) field names are
+// accepted — normalizeHookInput merges aliases before handlers run.
 type hookInput struct {
-	HookEventName string `json:"hook_event_name"`
-	SessionID     string `json:"session_id"`
-	Cwd           string `json:"cwd"`
+	HookEventName      string `json:"hook_event_name"`
+	HookEventNameCamel string `json:"hookEventName"`
+	SessionID          string `json:"session_id"`
+	SessionIDCamel     string `json:"sessionId"`
+	Cwd                string `json:"cwd"`
+	WorkspaceRoot      string `json:"workspaceRoot"`
 
 	// UserPromptSubmit
-	Prompt string `json:"prompt,omitempty"`
+	Prompt     string `json:"prompt,omitempty"`
+	UserPrompt string `json:"userPrompt,omitempty"`
 
 	// SessionStart
 	Source string `json:"source,omitempty"`
 
 	// Stop
-	TranscriptPath string `json:"transcript_path,omitempty"`
-	StopHookActive bool   `json:"stop_hook_active,omitempty"`
+	TranscriptPath      string `json:"transcript_path,omitempty"`
+	TranscriptPathCamel string `json:"transcriptPath,omitempty"`
+	StopHookActive      bool   `json:"stop_hook_active,omitempty"`
+	StopHookActiveCamel bool   `json:"stopHookActive,omitempty"`
 
 	// PreToolUse
-	ToolName  string          `json:"tool_name,omitempty"`
-	ToolInput json.RawMessage `json:"tool_input,omitempty"`
+	ToolName      string          `json:"tool_name,omitempty"`
+	ToolNameCamel string          `json:"toolName,omitempty"`
+	ToolInput     json.RawMessage `json:"tool_input,omitempty"`
+	ToolInputCamel json.RawMessage `json:"toolInput,omitempty"`
+}
+
+// normalizeHookInput merges Claude/Grok alias fields into the canonical names
+// handlers expect.
+func (h *hookInput) normalize() {
+	if h.HookEventName == "" {
+		h.HookEventName = h.HookEventNameCamel
+	}
+	if h.SessionID == "" {
+		h.SessionID = h.SessionIDCamel
+	}
+	if h.Cwd == "" && h.WorkspaceRoot != "" {
+		h.Cwd = h.WorkspaceRoot
+	}
+	if h.Prompt == "" {
+		h.Prompt = h.UserPrompt
+	}
+	if h.TranscriptPath == "" {
+		h.TranscriptPath = h.TranscriptPathCamel
+	}
+	if !h.StopHookActive {
+		h.StopHookActive = h.StopHookActiveCamel
+	}
+	if h.ToolName == "" {
+		h.ToolName = h.ToolNameCamel
+	}
+	if len(h.ToolInput) == 0 {
+		h.ToolInput = h.ToolInputCamel
+	}
 }
 
 // cmdHook dispatches to the right hook handler based on the event name.
@@ -81,6 +119,7 @@ func readHookInput() (*hookInput, error) {
 	if err := json.Unmarshal(data, &input); err != nil {
 		return nil, fmt.Errorf("parse hook JSON: %w", err)
 	}
+	input.normalize()
 	return &input, nil
 }
 
@@ -104,48 +143,7 @@ const autodreamInvocationEnvVar = "LJM_AUTODREAM_INVOCATION"
 // rather than by the user. Counting autodream-spawned sessions as user
 // activity creates a 60-min self-throttle after every fire.
 func writeSessionHeartbeat(vaultRoot, sessionID, cwd string, ts time.Time) error {
-	if os.Getenv(autodreamInvocationEnvVar) == "1" {
-		return nil
-	}
-
-	dir := filepath.Join(vaultRoot, "Metrics")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return fmt.Errorf("mkdir Metrics: %w", err)
-	}
-	path := filepath.Join(dir, "session_heartbeat.jsonl")
-
-	// Rotate before append if threshold reached. Failures here are
-	// non-fatal — losing a single heartbeat is acceptable; failing to
-	// write is what we actually care about.
-	if cfg := LoadConfig(vaultRoot); cfg.AutoDaydreamLogRotationThreshold > 0 {
-		if err := rotateJSONLIfNeeded(path, cfg.AutoDaydreamLogRotationThreshold, ts); err != nil {
-			fmt.Fprintf(os.Stderr, "[jm hook] heartbeat rotation: %v\n", err)
-		}
-	}
-
-	rec := struct {
-		Timestamp string `json:"timestamp"`
-		SessionID string `json:"session_id"`
-		Cwd       string `json:"cwd"`
-	}{
-		Timestamp: ts.Format(time.RFC3339),
-		SessionID: sessionID,
-		Cwd:       cwd,
-	}
-	line, err := json.Marshal(rec)
-	if err != nil {
-		return fmt.Errorf("marshal heartbeat: %w", err)
-	}
-
-	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
-	if err != nil {
-		return fmt.Errorf("open heartbeat file: %w", err)
-	}
-	defer f.Close()
-	if _, err := f.Write(append(line, '\n')); err != nil {
-		return fmt.Errorf("write heartbeat: %w", err)
-	}
-	return nil
+	return writeSessionHeartbeatEx(vaultRoot, sessionID, cwd, ts, nil)
 }
 
 // runSessionStart produces the fixed-blend session orientation:
@@ -154,7 +152,10 @@ func writeSessionHeartbeat(vaultRoot, sessionID, cwd string, ts time.Time) error
 // Archived memories are excluded. Knowledge entries are NOT loaded at session
 // start — they surface topically via user-prompt-submit association.
 func runSessionStart(vaultRoot string, input *hookInput) {
-	if err := writeSessionHeartbeat(vaultRoot, input.SessionID, input.Cwd, time.Now()); err != nil {
+	if err := writeSessionHeartbeatEx(vaultRoot, input.SessionID, input.Cwd, time.Now(), &HeartbeatOpts{
+		RuntimeHost: DetectRuntimeHost(),
+		Event:       "session-start",
+	}); err != nil {
 		fmt.Fprintf(os.Stderr, "[jm hook] session-start: heartbeat: %v\n", err)
 	}
 
@@ -260,23 +261,40 @@ func runSessionStart(vaultRoot string, input *hookInput) {
 // spawn agents directly (only Claude's main loop can), but it can put
 // the reminder in front of Claude at the start of every substantive turn.
 func runUserPromptSubmit(vaultRoot string, input *hookInput) {
-	if err := writeSessionHeartbeat(vaultRoot, input.SessionID, input.Cwd, time.Now()); err != nil {
-		fmt.Fprintf(os.Stderr, "[jm hook] user-prompt-submit: heartbeat: %v\n", err)
+	hookCfg := LoadConfig(vaultRoot)
+	runtimeHost := DetectRuntimeHost()
+	now := time.Now()
+	recordPromptHeartbeat := func(promptLen, retrieved int, nudge bool) {
+		if err := writeSessionHeartbeatEx(vaultRoot, input.SessionID, input.Cwd, now, &HeartbeatOpts{
+			RuntimeHost:          runtimeHost,
+			Event:                "user-prompt-submit",
+			PromptChars:          promptLen,
+			MemoriesRetrieved:    retrieved,
+			DaydreamNudgeEmitted: nudge,
+		}); err != nil {
+			fmt.Fprintf(os.Stderr, "[jm hook] user-prompt-submit: heartbeat: %v\n", err)
+		}
 	}
+
+	// Grok Stop fires before assistant text is persisted and does not pass
+	// transcriptPath. Harvest the prior turn here, while the previous retrieval
+	// session is still the latest for this conversation.
+	harvestCitationsFromPreviousTurn(vaultRoot, input)
+	resolveVolleyCommitmentFromPreviousTurn(vaultRoot, input)
 
 	prompt := strings.TrimSpace(input.Prompt)
 	if prompt == "" {
 		return
 	}
 
-	opts := AssociateOpts{
+	associateOpts := AssociateOpts{
 		Limit:        8,
 		Threshold:    0.2,
 		UpdateAccess: true,
 		Enrichment:   false,
 	}
 
-	results, keywords, _, err := AssociateMemories(vaultRoot, prompt, opts)
+	results, keywords, _, err := AssociateMemories(vaultRoot, prompt, associateOpts)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "[jm hook] user-prompt-submit: %v\n", err)
 		return
@@ -284,10 +302,11 @@ func runUserPromptSubmit(vaultRoot string, input *hookInput) {
 
 	if len(results) == 0 {
 		// No retrievals — but prompt itself may still be substantive.
-		// Emit only the nudge in that case if density warrants.
-		if isDensePrompt(prompt, 0) {
-			writeDaydreamNudge(os.Stdout, len(prompt), 0)
+		nudge := isDensePrompt(prompt, 0) && hookCfg.DaydreamVolleyPolicy != "disabled"
+		if nudge {
+			writeDaydreamNudge(vaultRoot, input.SessionID, runtimeHost, hookCfg, os.Stdout, len(prompt), 0)
 		}
+		recordPromptHeartbeat(len(prompt), 0, nudge)
 		// Hook surfacing still gets a chance — fresh daydreams may have
 		// no LTM overlap but still match the prompt by tag/body.
 		surfaceFreshDaydreamsToHook(vaultRoot, prompt, input.SessionID, time.Now())
@@ -301,31 +320,38 @@ func runUserPromptSubmit(vaultRoot string, input *hookInput) {
 	// Hook-based retrieval is the hot path for all conversational usage; without
 	// this call, retrieval_sessions.jsonl never accumulates data and edge weights
 	// can never update from real usage patterns.
-	hookCfg := LoadConfig(vaultRoot)
-	if hookCfg.RetrievalSessionLogEnabled && len(results) > 0 {
+	var retrievalSessionID string
+	if hookCfg.RetrievalSessionLogEnabled && len(results) > 0 &&
+		ShouldLogHookRetrievalSession(input.SessionID, prompt) {
+		retrievalSessionID = GenerateSessionID()
 		loaded := make([]string, 0, len(results))
 		for _, r := range results {
 			loaded = append(loaded, MemoryKey(r.Memory))
 		}
 		session := RetrievalSession{
-			SessionID:    GenerateSessionID(),
-			Timestamp:    time.Now(),
-			Loaded:       loaded,
-			QueryContext: prompt,
-			QueryTags:    keywords,
+			SessionID:             retrievalSessionID,
+			Timestamp:             time.Now(),
+			Loaded:                loaded,
+			QueryContext:          prompt,
+			QueryTags:             keywords,
+			ConversationSessionID: input.SessionID,
 		}
 		if err := AppendRetrievalSession(vaultRoot, session); err != nil {
 			fmt.Fprintf(os.Stderr, "[jm hook] retrieval session: %v\n", err)
+			retrievalSessionID = ""
 		} else if hookCfg.RetrievalSessionLogRetentionDays > 0 {
-			_, _ = PruneRetrievalSessions(vaultRoot, hookCfg.RetrievalSessionLogRetentionDays)
+			MaybePruneRetrievalSessions(vaultRoot, hookCfg.RetrievalSessionLogRetentionDays)
 		}
 	}
+	writeRetrievalSessionID(os.Stdout, retrievalSessionID)
 
 	surfaceFreshDaydreamsToHook(vaultRoot, prompt, input.SessionID, time.Now())
 
-	if isDensePrompt(prompt, len(results)) {
-		writeDaydreamNudge(os.Stdout, len(prompt), len(results))
+	nudge := isDensePrompt(prompt, len(results)) && hookCfg.DaydreamVolleyPolicy != "disabled"
+	if nudge {
+		writeDaydreamNudge(vaultRoot, input.SessionID, runtimeHost, hookCfg, os.Stdout, len(prompt), len(results))
 	}
+	recordPromptHeartbeat(len(prompt), len(results), nudge)
 }
 
 // surfaceFreshDaydreamsToHook is the hook-level wrapper around
@@ -408,6 +434,12 @@ func spawnConsolidationIfNeeded(vaultRoot string, cfg Config) {
 	// Gate 5: cooldown.
 	cooldown := time.Duration(cfg.AutoConsolidationCooldownMinutes) * time.Minute
 	if cooldown > 0 && !lastTrigger.IsZero() && time.Since(lastTrigger) < cooldown {
+		return
+	}
+
+	// Gate 5.5: single-flight pre-check. If a consolidation is already running,
+	// don't spawn a process that would just acquire-fail and exit.
+	if consolidationLockHeld(vaultRoot) {
 		return
 	}
 
@@ -548,19 +580,36 @@ func isDensePrompt(prompt string, retrievedCount int) bool {
 	return false
 }
 
-// writeDaydreamNudge emits a separate tagged block after the active-context
-// reminding Claude to launch memory-daydream background agents. Kept short
-// and specific so it doesn't compete for attention with the retrieved memories.
-func writeDaydreamNudge(w io.Writer, promptLen, retrievedCount int) {
+// writeDaydreamNudge emits a host-aware nudge and records a volley commitment
+// so the scheduler defers until the agent spawns or Stop releases it.
+func writeDaydreamNudge(vaultRoot, sessionID, runtimeHost string, cfg Config, w io.Writer, promptLen, retrievedCount int) {
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "<daydream-nudge>")
 	fmt.Fprintf(w, "Substantive prompt detected (%d chars, %d memories retrieved). ",
 		promptLen, retrievedCount)
-	fmt.Fprintln(w, "Consider launching memory-daydream background agents in parallel:")
+	fmt.Fprintf(w, "Runtime host: %s. ", runtimeHost)
+	fmt.Fprintln(w, "Launch memory-daydream background agents in parallel:")
 	fmt.Fprintln(w, "  - at least 1 seeded from the current topic")
 	fmt.Fprintln(w, "  - at least 1 random walk from an unrelated corner of the graph")
-	fmt.Fprintln(w, "Daydreams can't be fired from this hook — only Claude's main loop can spawn agents.")
+	fmt.Fprintln(w, VolleySpawnHintForHost(runtimeHost))
+	fmt.Fprintln(w, "Scheduled autodream defers while this volley commitment is pending.")
 	fmt.Fprintln(w, "</daydream-nudge>")
+
+	ttl := cfg.DaydreamVolleyCommitmentTTLMinutes
+	if ttl <= 0 {
+		ttl = 20
+	}
+	if err := RecordVolleyCommitment(vaultRoot, sessionID, runtimeHost, time.Now(), ttl); err != nil {
+		fmt.Fprintf(os.Stderr, "[jm hook] volley commitment: %v\n", err)
+	}
+	_ = appendDaydreamDispatchLog(vaultRoot, DaydreamDispatchLogEntry{
+		Timestamp:    time.Now(),
+		Channel:      "volley",
+		HostDetected: runtimeHost,
+		Decision:     "nudge_emitted",
+		SessionID:    sessionID,
+		Reason:       fmt.Sprintf("dense prompt (%d chars, %d memories)", promptLen, retrievedCount),
+	})
 }
 
 // writeSessionStartContext emits the fixed-blend session orientation.

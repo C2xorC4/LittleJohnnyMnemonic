@@ -1,0 +1,18 @@
+{
+  "id": "T03",
+  "tier": 1,
+  "title": "GKE kernel vulnerability taxonomy",
+  "prompt": "Per Perla and Oldani (GKE Ch. 2, ingested), what are the two top-level kernel vulnerability classes?",
+  "cwd": "fixture-repo",
+  "tool_policy": "memory-only",
+  "expected_memory_keys": ["memory/knowledge/gke_kernel_vulnerability_taxonomy"],
+  "forbidden_memory_keys": ["memory/knowledge/gke_taxonomy_decoy"],
+  "ground_truth": {
+    "required_substrings": ["design-related", "implementation-related"],
+    "forbidden_substrings": ["syntactic", "semantic"]
+  },
+  "grading": {
+    "factual_weight": 1.0,
+    "pass_threshold": 1.0
+  }
+}

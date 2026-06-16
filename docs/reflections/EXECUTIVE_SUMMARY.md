@@ -71,6 +71,18 @@ etc.), see the per-assessment documents.
 | → Jun 5 | Machine/tooling registry — `jm machines`, SSH commands, elevation levels injected at session start | ✓ |
 | → Jun 5 | Activation floors — per-type minimum activation; durable categories stay retrievable between relevant sessions | ✓ |
 | → Jun 5 | Autodream console suppression — background scheduler no longer spawns visible console windows | ✓ |
+| → Jun 11 | **Data-integrity rescue** — fixed parser/writer round-trip field loss that stripped knowledge provenance (`source_document` etc.) on every retrieval; 235/419 knowledge entries had been damaged | ✓ |
+| → Jun 11 | `jm recover-provenance` — restored provenance for 220/235 stripped entries (163 from the encrypted backup history, 57 from ingestion manifests); `source_document` 184 → 404/419 | ✓ |
+| → Jun 11 | **Backup/restore durability fixes** — bounded tar copy (live-growing files) + path-safety segment check; backups had been **un-restorable since May 22** | ✓ |
+| → Jun 11 | `jm lint-links` — audit + repair asymmetric / dangling / prose-only / concept-mention links (gap 25); dangling cleaned 22 → 0 | ✓ |
+| → Jun 11 | `type:` quote-strip + `learn-edges` double-bracket fixes | ✓ |
+| → Jun 12 | **Access-tracking sidecar** — retrieval no longer rewrites `.md` files to bump access; append-only `Metrics/access_events.jsonl` (lossless under concurrency). Closes the field-loss root AND the access-write edit-clobber race; closes ACT-R access-distribution **gap #1** by capturing the per-access timestamp distribution | ✓ |
+| → Jun 16 | **Grok Build host compatibility** — dual snake_case/camelCase hook input, runtime host registry, Grok transcript harvest (`updates.jsonl` + `chat_history.jsonl`), PowerShell install/uninstall (`grok/`, `.grok/`) | ✓ |
+| → Jun 16 | **Retrieval session log pollution fix** — `LJM_INTERNAL_INVOCATION` gate, internal-eval prompt detection, conversation-session-id requirement, `CompactRetrievalSessionLog`; judge-shell consolidation prompts no longer poison `retrieval_sessions.jsonl` | ✓ |
+| → Jun 16 | **Scoring precision** — operational stopwords + discriminating-IDF gate for associate/retrieve keywords | ✓ |
+| → Jun 16 | **Citation harvest** — correlates assistant `Memory/` path citations against the preceding retrieval session loaded set | ✓ |
+| → Jun 16 | **Host-aware daydream dispatch** — volley commitments, scheduler-host availability, heartbeat activity detection; active skip window default 0→45m | ✓ |
+| → Jun 16 | **`jm benchmark` harness** — comparative LJM-on/off eval across Claude/Grok arms (fixtures in `benchmarks/`) | ✓ |
 
 ---
 
@@ -169,10 +181,12 @@ Open questions across assessments. Closed when there's evidence.
    `AppendRetrievalSession` is now wired into the hook path; conversational
    retrieval sessions write to `retrieval_sessions.jsonl`. **Gap 1 closed
    (confirmed 2026-06-05):** `retrieval_session_log_enabled: true` in Config.md;
-   `retrieval_sessions.jsonl` is accumulating (~83MB). One gap remains: (2)
-   `pickStableTrace` needs a code path that writes to and reads `edge_usage.jsonl`.
-   Until that closes, edge weights don't move. Signal is piling up; nothing is
-   consuming it.
+   `retrieval_sessions.jsonl` is accumulating (~83MB). **Pollution fixed
+   (2026-06-16):** internal judge/consolidation invocations (~99% of entries)
+   no longer log; run `jm compact-retrieval-sessions` to retroactively clean.
+   One gap remains: (2) `pickStableTrace` needs a code path that writes to and
+   reads `edge_usage.jsonl`. Until that closes, edge weights don't move. Signal
+   is piling up; nothing is consuming it.
 
 4. **T7 architectural response.** ~~Not yet designed.~~ Shipped May 22.
    Non-root CLAUDE.md files in trusted repos now require SHA256 approval
@@ -180,6 +194,25 @@ Open questions across assessments. Closed when there's evidence.
    a `trusted-unapproved` warning (shows content, no write block). The
    vector that T7 exploited — plausible formatting, non-root path — is
    now gated. Retrieval-path injection (scoring manipulation) remains open.
+
+5. **Whole-struct write-back clobbering — partially closed (2026-06-12).**
+   The root cause behind both the June-11 field-loss P0 and the edit-revert
+   problem: content + volatile access metadata both lived in frontmatter, and
+   every path rewrote the whole `.md`. The **access-tracking sidecar** closed
+   the highest-frequency instance (retrieval no longer writes `.md`). The
+   remaining instances are the background write-back paths (decay, autodream
+   reinforce, compress, heal): they load a snapshot, change one field, and
+   write the whole stale struct — so an edit made during their run is reverted.
+   The fix is read-modify-write-fresh in those sites; deferred. Lower acuity now
+   that retrieval and (gated) consolidation are handled.
+
+6. **Adaptive-edge pilot still produces 0 reinforced edges — corrected
+   diagnosis (2026-06-11).** Not just the `edge_usage.jsonl` write path: the
+   manual `jm associate --cite` write path exists (v0) but is never invoked, and
+   the automated `pickStableTrace` path is unbuilt. Compounding that, the
+   `learn-edges` signal itself (raw co-activation count) is dominated by hub
+   base-rate frequency and within-session repetition — needs lift/PMI +
+   distinct-session normalization before it produces meaningful learned edges.
 
 ---
 

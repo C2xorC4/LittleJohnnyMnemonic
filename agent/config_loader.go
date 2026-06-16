@@ -197,6 +197,13 @@ func applyScalarOverrides(cfg *Config, s map[string]string) {
 		cfg.DaydreamRedundancyFallbackDampening = atofOrKeep(v, cfg.DaydreamRedundancyFallbackDampening)
 	}
 
+	if v, ok := s["judge_cli_fallback_enabled"]; ok {
+		cfg.JudgeCLIFallbackEnabled = atobOrKeep(v, cfg.JudgeCLIFallbackEnabled)
+	}
+	if v, ok := s["judge_cli_max_concurrent"]; ok {
+		cfg.JudgeCLIMaxConcurrent = atoiOrKeep(v, cfg.JudgeCLIMaxConcurrent)
+	}
+
 	if v, ok := s["auto_daydream_enabled"]; ok {
 		cfg.AutoDaydreamEnabled = atobOrKeep(v, cfg.AutoDaydreamEnabled)
 	}
@@ -275,6 +282,18 @@ func applyScalarOverrides(cfg *Config, s map[string]string) {
 	}
 	if v, ok := s["auto_daydream_value_judge_enabled"]; ok {
 		cfg.AutoDaydreamValueJudgeEnabled = atobOrKeep(v, cfg.AutoDaydreamValueJudgeEnabled)
+	}
+	if v, ok := s["daydream_scheduler_host"]; ok {
+		cfg.DaydreamSchedulerHost = stripQuotes(v)
+	}
+	if v, ok := s["daydream_scheduler_missing_invoker"]; ok {
+		cfg.DaydreamSchedulerMissingInvoker = stripQuotes(v)
+	}
+	if v, ok := s["daydream_volley_policy"]; ok {
+		cfg.DaydreamVolleyPolicy = stripQuotes(v)
+	}
+	if v, ok := s["daydream_volley_commitment_ttl_minutes"]; ok {
+		cfg.DaydreamVolleyCommitmentTTLMinutes = atoiOrKeep(v, cfg.DaydreamVolleyCommitmentTTLMinutes)
 	}
 
 	if v, ok := s["spreading_activation_factor"]; ok {

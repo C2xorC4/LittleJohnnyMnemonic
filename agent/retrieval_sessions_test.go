@@ -181,6 +181,78 @@ func TestRetrievalSession_PruneDisabled(t *testing.T) {
 	}
 }
 
+func TestIsInternalEvalPrompt(t *testing.T) {
+	if !IsInternalEvalPrompt("You evaluate whether a buffer entry for a memory system adds novel") {
+		t.Error("expected buffer judge prefix to match")
+	}
+	if IsInternalEvalPrompt("What is the state of PR1 retrieval-session emission?") {
+		t.Error("user query should not match internal eval")
+	}
+	t.Setenv(InternalInvocationEnvVar, "1")
+	if !IsInternalEvalPrompt("anything") {
+		t.Error("internal invocation env should force internal eval")
+	}
+}
+
+func TestShouldLogHookRetrievalSession(t *testing.T) {
+	t.Setenv(InternalInvocationEnvVar, "")
+	if ShouldLogHookRetrievalSession("", "user question") {
+		t.Error("empty conversation session should not log")
+	}
+	if ShouldLogHookRetrievalSession("conv-1", "You evaluate whether a buffer entry") {
+		t.Error("judge prompt should not log")
+	}
+	if !ShouldLogHookRetrievalSession("conv-1", "<user_query>\nWhat is PR1 status?\n</user_query>") {
+		t.Error("conversational prompt with session id should log")
+	}
+}
+
+func TestCompactRetrievalSessionLog_DropsJudgePollution(t *testing.T) {
+	vault := t.TempDir()
+	cfgDir := filepath.Join(vault, "System")
+	if err := os.MkdirAll(cfgDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(cfgDir, "Config.md"),
+		[]byte("```yaml\nretrieval_session_log_retention_days: 14\n```\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	judge := RetrievalSession{
+		SessionID:    "judge-1",
+		Timestamp:    time.Now(),
+		Loaded:       []string{"memory/x/a"},
+		QueryContext: "You evaluate whether a buffer entry for a memory system adds novel information",
+	}
+	conv := RetrievalSession{
+		SessionID:             "conv-1",
+		Timestamp:             time.Now(),
+		Loaded:                []string{"memory/project/johnny_mnemonic"},
+		QueryContext:          "<user_query>\nstatus check\n</user_query>",
+		ConversationSessionID: "host-session",
+	}
+	for _, s := range []RetrievalSession{judge, conv} {
+		if err := AppendRetrievalSession(vault, s); err != nil {
+			t.Fatalf("append: %v", err)
+		}
+	}
+
+	kept, dropped, _, err := CompactRetrievalSessionLog(vault, 14, false)
+	if err != nil {
+		t.Fatalf("compact: %v", err)
+	}
+	if dropped != 1 || kept != 1 {
+		t.Errorf("kept=%d dropped=%d, want kept=1 dropped=1", kept, dropped)
+	}
+	remaining, err := LoadRetrievalSessions(vault)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if len(remaining) != 1 || remaining[0].SessionID != "conv-1" {
+		t.Errorf("remaining: %+v", remaining)
+	}
+}
+
 func TestRetrievalSession_LogPathLocation(t *testing.T) {
 	vault := t.TempDir()
 	s := RetrievalSession{

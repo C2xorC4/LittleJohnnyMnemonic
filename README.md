@@ -155,9 +155,10 @@ inlined. All cross-referenced in the
 | Protocol | `System/`, `Agents/`, `CLAUDE.md` | Spec, schema, scoring, agent definitions |
 | Tooling | `agent/` | The `jm` Go CLI (consolidate, retrieve, associate, decay, compress, backup, …) |
 
-The agent integrates into Claude Code via three lifecycle hooks
-(SessionStart, UserPromptSubmit, Stop) — see `System/` for the full
-lifecycle.
+The agent integrates into Claude Code and Grok Build via lifecycle hooks
+(SessionStart, UserPromptSubmit, PreToolUse, Stop). Claude hooks live in
+`~/.claude/settings.json`; Grok-native hooks install via `grok/install.ps1`
+(see [`grok/README.md`](grok/README.md)).
 
 ## Two-repo durability model
 
@@ -186,6 +187,7 @@ require manual review. Full operational guide:
 # 1. Build the CLI
 cd agent
 go build -o jm.exe .
+# Vault-root jm.exe is a symlink to agent/jm.exe — rebuild here only; no copy step.
 
 # 2. Generate the age keypair (writes to ~/.config/ljm/age.key)
 ./jm.exe backup --init-key

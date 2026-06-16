@@ -60,12 +60,12 @@ func IsDaydreamSourced(entry *BufferEntry) bool {
 // error). On error, the caller should keep the entry by default — better
 // to retain a marginal daydream than to drop it because the judge was
 // unreachable.
-func JudgeDaydreamValue(entry *BufferEntry) (ValueVerdict, string, error) {
+func JudgeDaydreamValue(entry *BufferEntry, cliFallback bool, cliMaxConcurrent int) (ValueVerdict, string, error) {
 	if entry == nil {
 		return "", "", fmt.Errorf("daydream value judge: nil entry")
 	}
 	userContent := buildValueJudgeMessage(entry)
-	rawText, _, err := callHaikuJudge(daydreamValueSystemPrompt, userContent, 250)
+	rawText, _, err := callHaikuJudge(daydreamValueSystemPrompt, userContent, 250, cliFallback, cliMaxConcurrent)
 	if err != nil {
 		return "", "", err
 	}

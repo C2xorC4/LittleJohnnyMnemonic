@@ -62,8 +62,10 @@ const (
 	SkipPromptBuildError     = "prompt_build_error"
 	SkipInvokerMissing       = "invoker_missing"
 	SkipInvokerError         = "invoker_error"
-	SkipStrategyForcedNoPair = "strategy_forced_no_pair"
-	SkipStrategyInvalid      = "strategy_invalid"
+	SkipStrategyForcedNoPair   = "strategy_forced_no_pair"
+	SkipStrategyInvalid        = "strategy_invalid"
+	SkipVolleyCommitment       = "volley_commitment"
+	SkipSchedulerHostUnavailable = "scheduler_host_unavailable"
 )
 
 // BufferPressureRecord captures the integration backlog at fire time:
@@ -253,11 +255,32 @@ func RunAutodream(in AutodreamRunInputs) AutodreamRunResult {
 	}
 	res.Mode = mode
 
+	// Scheduler host — hard skip when preferred host has no headless invoker.
+	if !in.Force && !in.DryRun {
+		if reason, skip := checkSchedulerHostSkip(in); skip {
+			res.Reason = reason
+			res.SkipCategory = SkipSchedulerHostUnavailable
+			logSchedulerDispatch(in, in.Cfg.DaydreamSchedulerHost, "skipped", reason, SkipSchedulerHostUnavailable)
+			return res
+		}
+	}
+
+	// Volley commitment — defer while an in-session nudge is pending.
+	if !in.Force {
+		if reason, skip := checkVolleyCommitmentSkip(in); skip {
+			res.Reason = reason
+			res.SkipCategory = SkipVolleyCommitment
+			logSchedulerDispatch(in, in.Cfg.DaydreamSchedulerHost, "skipped", reason, SkipVolleyCommitment)
+			return res
+		}
+	}
+
 	// Activity-based skip — orthogonal to jitter; cheap to check first.
 	if !in.Force {
 		if reason, skip := checkActivitySkip(in, mode); skip {
 			res.Reason = reason
 			res.SkipCategory = SkipActivityRecent
+			logSchedulerDispatch(in, in.Cfg.DaydreamSchedulerHost, "skipped", reason, SkipActivityRecent)
 			return res
 		}
 	}
@@ -365,6 +388,7 @@ func RunAutodream(in AutodreamRunInputs) AutodreamRunResult {
 	}
 	res.Response = truncateResponse(response, 500)
 	res.Decision = decisionFired
+	logSchedulerDispatch(in, in.Cfg.DaydreamSchedulerHost, "fired", describeRun(res), "")
 
 	// For replay strategies, parse the verdict line and route to the
 	// appropriate audit/queue file. Failures here are recorded on the result
@@ -418,17 +442,72 @@ func resolveModeForRun(in AutodreamRunInputs) (AutodreamMode, error) {
 	}
 }
 
+func checkSchedulerHostSkip(in AutodreamRunInputs) (reason string, skip bool) {
+	host := normalizeSchedulerHost(in.Cfg.DaydreamSchedulerHost)
+	if SchedulerHostAvailable(host) {
+		return "", false
+	}
+	policy := in.Cfg.DaydreamSchedulerMissingInvoker
+	if policy == "" {
+		policy = DaydreamSchedulerMissingInvokerSkip
+	}
+	if policy != DaydreamSchedulerMissingInvokerSkip {
+		return "", false
+	}
+	return fmt.Sprintf("scheduler host %q has no headless invoker (daydream_scheduler_missing_invoker: skip)", host), true
+}
+
+func checkVolleyCommitmentSkip(in AutodreamRunInputs) (reason string, skip bool) {
+	pending, err := PendingVolleyCommitments(in.VaultRoot, in.Now)
+	if err != nil || len(pending) == 0 {
+		return "", false
+	}
+	if len(pending) == 1 {
+		c := pending[0]
+		return fmt.Sprintf("volley commitment pending for %s (%s)", c.SessionID, c.RuntimeHost), true
+	}
+	return fmt.Sprintf("volley commitments pending (%d sessions)", len(pending)), true
+}
+
 func checkActivitySkip(in AutodreamRunInputs, mode AutodreamMode) (reason string, skip bool) {
 	window := skipWindowForMode(in.Cfg, mode)
 	if window <= 0 {
 		return "", false
 	}
+
+	if activitySourceEnabled(in.Cfg.AutoDaydreamActivitySources, "heartbeat") {
+		sessions, err := ReadActiveSessions(in.VaultRoot, window, in.Now)
+		if err == nil && len(sessions) > 0 {
+			return formatActiveSessionsReason(sessions, in.Now), true
+		}
+	}
+
 	state, _ := ReadActivityState(in.VaultRoot, in.Cfg.AutoDaydreamActivitySources)
 	skipNow, age := ShouldSkipForActivity(state, window, in.Now)
 	if !skipNow {
 		return "", false
 	}
 	return fmt.Sprintf("activity %dm ago (window %dm)", int(age.Minutes()), window), true
+}
+
+func activitySourceEnabled(sources []string, name string) bool {
+	for _, s := range sources {
+		if s == name {
+			return true
+		}
+	}
+	return false
+}
+
+func logSchedulerDispatch(in AutodreamRunInputs, hostPreferred, decision, reason, skipCategory string) {
+	_ = appendDaydreamDispatchLog(in.VaultRoot, DaydreamDispatchLogEntry{
+		Timestamp:     in.Now,
+		Channel:       "scheduled",
+		HostPreferred: normalizeSchedulerHost(hostPreferred),
+		Decision:      decision,
+		Reason:        reason,
+		SkipCategory:  skipCategory,
+	})
 }
 
 func skipWindowForMode(cfg Config, mode AutodreamMode) int {

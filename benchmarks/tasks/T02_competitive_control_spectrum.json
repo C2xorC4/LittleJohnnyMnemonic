@@ -1,0 +1,16 @@
+{
+  "id": "T02",
+  "tier": 1,
+  "title": "OOTM competitive control spectrum",
+  "prompt": "List the three mechanisms on Kilcullen's competitive control spectrum in order from lightest to heaviest.",
+  "cwd": "fixture-repo",
+  "tool_policy": "memory-only",
+  "expected_memory_keys": ["memory/knowledge/ootm_theory_of_competitive_control"],
+  "ground_truth": {
+    "required_substrings": ["persuasion", "administration", "coercion"]
+  },
+  "grading": {
+    "factual_weight": 1.0,
+    "pass_threshold": 1.0
+  }
+}
