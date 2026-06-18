@@ -354,6 +354,10 @@ func cmdConsolidate(vaultRoot string, args []string) {
 		}
 	}
 
+	if !*dryRun {
+		MaybeRefreshDashboard(vaultRoot, dashReasonConsolidation)
+	}
+
 	fmt.Println("\n=== Consolidation complete ===")
 }
 

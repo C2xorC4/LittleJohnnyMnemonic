@@ -62,6 +62,7 @@ type metricsWatcher struct {
 func newMetricsWatcher(metricsDir string) *metricsWatcher {
 	watched := []string{
 		filepath.Join(metricsDir, "recall_log.jsonl"),
+		filepath.Join(metricsDir, "memory_usage_log.jsonl"),
 		filepath.Join(metricsDir, "consolidation_outcomes.jsonl"),
 		filepath.Join(metricsDir, "autodream_activation_snapshots.jsonl"),
 		filepath.Join(metricsDir, "autodream_log.jsonl"),
@@ -108,25 +109,34 @@ func cmdMetricsServe(vaultRoot string, args []string) {
 	}
 	_ = fs.Parse(args)
 
+	if err := runMetricsServer(vaultRoot, *port, *pollInterval); err != nil {
+		fmt.Fprintf(os.Stderr, "metrics serve: %v\n", err)
+		os.Exit(1)
+	}
+}
+
+func runMetricsServer(vaultRoot string, port int, pollInterval time.Duration) error {
 	metricsDir := filepath.Join(vaultRoot, "Metrics")
-	title := "LJM Metrics — " + filepath.Base(vaultRoot)
+	vaultName := filepath.Base(vaultRoot)
+	title := "LJM Memory Health — " + vaultName
 
 	broker := newSSEBroker()
 	watcher := newMetricsWatcher(metricsDir)
 
 	// File-change watcher goroutine — polls and broadcasts JSON payload on change.
 	go func() {
-		ticker := time.NewTicker(*pollInterval)
+		ticker := time.NewTicker(pollInterval)
 		defer ticker.Stop()
 		for range ticker.C {
 			if !watcher.changed() {
 				continue
 			}
-			payload, err := buildDashboardPayload(metricsDir)
+			payload, err := buildDashboardPayload(vaultRoot)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "[metrics serve] reload: %v\n", err)
 				continue
 			}
+			payload.Meta["vault_root"] = vaultRoot
 			payload.Meta["generated_at"] = time.Now().UTC().Format(time.RFC3339)
 			data, err := json.Marshal(payload)
 			if err != nil {
@@ -145,13 +155,14 @@ func cmdMetricsServe(vaultRoot string, args []string) {
 			http.NotFound(w, r)
 			return
 		}
-		payload, err := buildDashboardPayload(metricsDir)
+		payload, err := buildDashboardPayload(vaultRoot)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
+		payload.Meta["vault_root"] = vaultRoot
 		payload.Meta["generated_at"] = time.Now().UTC().Format(time.RFC3339)
-		rendered, err := renderDashboardHTML(payload, title, "live")
+		rendered, err := renderDashboardHTML(payload, title, vaultName, "live")
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -163,11 +174,12 @@ func cmdMetricsServe(vaultRoot string, args []string) {
 
 	// GET /api/data — current payload as JSON (for manual fetch / debugging).
 	mux.HandleFunc("/api/data", func(w http.ResponseWriter, r *http.Request) {
-		payload, err := buildDashboardPayload(metricsDir)
+		payload, err := buildDashboardPayload(vaultRoot)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
+		payload.Meta["vault_root"] = vaultRoot
 		payload.Meta["generated_at"] = time.Now().UTC().Format(time.RFC3339)
 		data, err := json.Marshal(payload)
 		if err != nil {
@@ -218,13 +230,10 @@ func cmdMetricsServe(vaultRoot string, args []string) {
 		}
 	})
 
-	addr := fmt.Sprintf(":%d", *port)
-	fmt.Printf("LJM Metrics  →  http://localhost:%d\n", *port)
-	fmt.Printf("Watching %s  (poll %s)\n", metricsDir, *pollInterval)
+	addr := fmt.Sprintf(":%d", port)
+	fmt.Printf("LJM Metrics  →  http://localhost:%d\n", port)
+	fmt.Printf("Watching %s  (poll %s)\n", metricsDir, pollInterval)
 	fmt.Println("Ctrl+C to stop")
 
-	if err := http.ListenAndServe(addr, mux); err != nil {
-		fmt.Fprintf(os.Stderr, "metrics serve: %v\n", err)
-		os.Exit(1)
-	}
+	return http.ListenAndServe(addr, mux)
 }

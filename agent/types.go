@@ -130,6 +130,22 @@ type Config struct {
 	RetrievalThreshold float64 `yaml:"retrieval_threshold"`
 	MaxMemoriesLoaded  int     `yaml:"max_memories_loaded"`
 
+	// Additive ACT-R scoring: score = base-level activation + β·relevance·confidence
+	// + surprise. RelevanceWeight (β) scales the [0,1] relevance term into
+	// base-level-activation units so relevance can steer ranking instead of being
+	// dominated by the ~50× larger activation term of the old multiplicative form.
+	RelevanceWeight float64 `yaml:"relevance_weight"`
+
+	// MaxActivation soft-bounds base-level activation via M·tanh(raw/M) so a single
+	// count-inflated memory cannot dominate the additive score. 0 disables the squash.
+	MaxActivation float64 `yaml:"max_activation"`
+
+	// CitationGatedActivation: when true, system-injection access (hook +
+	// session-start retrieval) does NOT reinforce base-level activation — only
+	// genuine use (citations) and explicit CLI retrieval do. Breaks the feedback
+	// loop where injected memories re-pin their own recency every turn.
+	CitationGatedActivation bool `yaml:"citation_gated_activation"`
+
 	// Consolidation
 	BufferThreshold                  int    `yaml:"buffer_threshold"`
 	ConsolidationDepth               string `yaml:"consolidation_depth"`
@@ -282,6 +298,17 @@ type Config struct {
 	RecallTrackingLogPath   string `yaml:"recall_tracking_log_path"`
 	RecallLogRetentionDays  int    `yaml:"recall_log_retention_days"`
 
+	// Memory usage tracking — logs whether assistant turns reference injected
+	// memories (model-dependent adherence), keyed by model + runtime host.
+	MemoryUsageTrackingEnabled   bool   `yaml:"memory_usage_tracking_enabled"`
+	MemoryUsageTrackingVerbosity string `yaml:"memory_usage_tracking_verbosity"`
+	MemoryUsageTrackingLogPath   string `yaml:"memory_usage_tracking_log_path"`
+
+	// Metrics dashboard — auto-regenerate Metrics/dashboard.html after events
+	// that change time-series data (consolidation, compact, autodream, knowledge).
+	DashboardAutoRefreshEnabled     bool `yaml:"dashboard_auto_refresh_enabled"`
+	DashboardRefreshCooldownMinutes int  `yaml:"dashboard_refresh_cooldown_minutes"`
+
 	// Encrypted backup (cloud-password-manager model — local age encryption,
 	// blob-only transport, key never leaves the machine).
 	// Flat-key namespace: backup_* scalars in Config.md.
@@ -299,8 +326,12 @@ type Config struct {
 // DefaultConfig returns the default configuration matching Config.md.
 func DefaultConfig() Config {
 	return Config{
-		RetrievalThreshold: 0.3,
+		RetrievalThreshold: 1.0, // additive-scoring scale (was 0.3 under the old multiplicative score)
 		MaxMemoriesLoaded:  15,
+
+		RelevanceWeight:         8.0,  // β: scales relevance (realistically ~0.05–0.4) into base-level-activation units
+		MaxActivation:           2.0,  // soft bound on base-level activation (M·tanh(raw/M))
+		CitationGatedActivation: true, // injection access doesn't reinforce activation; only genuine use does
 
 		BufferThreshold:                  10,
 		ConsolidationDepth:               "standard",
@@ -324,11 +355,11 @@ func DefaultConfig() Config {
 		},
 
 		// Activation floors prevent durable memory types from becoming
-		// unretrievable during topic-dormant periods. The formula
-		// activation × relevance × confidence goes negative for memories not
-		// accessed recently; a floor clamps the multiplier so relevance still
-		// contributes. Types representing ephemeral context (project, reference)
-		// intentionally have no floor — their decay is load-bearing.
+		// unretrievable during topic-dormant periods. Base-level activation goes
+		// negative for memories not accessed recently; the floor keeps the additive
+		// base term from dragging the score below threshold so the β·relevance term
+		// can still surface a topical match. Types representing ephemeral context
+		// (project, reference) intentionally have no floor — their decay is load-bearing.
 		ActivationFloors: map[string]float64{
 			"knowledge":         1.0, // no time decay — fixed at 1.0
 			"episodic":          0.7, // session summaries — most durable
@@ -486,6 +517,13 @@ func DefaultConfig() Config {
 		RecallTrackingEnabled:   true,
 		RecallTrackingVerbosity: "summary",
 		RecallTrackingLogPath:   "Metrics/recall_log.jsonl",
+
+		MemoryUsageTrackingEnabled:   true,
+		MemoryUsageTrackingVerbosity: "summary",
+		MemoryUsageTrackingLogPath:   "Metrics/memory_usage_log.jsonl",
+
+		DashboardAutoRefreshEnabled:     true,
+		DashboardRefreshCooldownMinutes: 5,
 		RecallLogRetentionDays:  30,
 
 		// Backup defaults — disabled until the user runs `jm backup --init-key`

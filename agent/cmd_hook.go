@@ -41,6 +41,10 @@ type hookInput struct {
 	ToolNameCamel string          `json:"toolName,omitempty"`
 	ToolInput     json.RawMessage `json:"tool_input,omitempty"`
 	ToolInputCamel json.RawMessage `json:"toolInput,omitempty"`
+
+	// Model identity (when host provides it)
+	Model      string `json:"model,omitempty"`
+	ModelCamel string `json:"modelId,omitempty"`
 }
 
 // normalizeHookInput merges Claude/Grok alias fields into the canonical names
@@ -69,6 +73,9 @@ func (h *hookInput) normalize() {
 	}
 	if len(h.ToolInput) == 0 {
 		h.ToolInput = h.ToolInputCamel
+	}
+	if h.Model == "" {
+		h.Model = h.ModelCamel
 	}
 }
 
@@ -242,7 +249,7 @@ func runSessionStart(vaultRoot string, input *hookInput) {
 	for _, m := range unique {
 		keys = append(keys, normalizeKey(m))
 	}
-	if err := recordAccessBatch(vaultRoot, keys, now); err != nil {
+	if err := recordAccessBatch(vaultRoot, keys, now, "session-start"); err != nil {
 		fmt.Fprintf(os.Stderr, "[jm hook] session-start: record access: %v\n", err)
 	}
 
@@ -289,9 +296,10 @@ func runUserPromptSubmit(vaultRoot string, input *hookInput) {
 
 	associateOpts := AssociateOpts{
 		Limit:        8,
-		Threshold:    0.2,
+		Threshold:    0, // use AssociateMemories default (additive-scale 1.0)
 		UpdateAccess: true,
 		Enrichment:   false,
+		Source:       "hook",
 	}
 
 	results, keywords, _, err := AssociateMemories(vaultRoot, prompt, associateOpts)
@@ -301,6 +309,7 @@ func runUserPromptSubmit(vaultRoot string, input *hookInput) {
 	}
 
 	if len(results) == 0 {
+		writeRecallMetrics(vaultRoot, results, input.SessionID, len(prompt))
 		// No retrievals — but prompt itself may still be substantive.
 		nudge := isDensePrompt(prompt, 0) && hookCfg.DaydreamVolleyPolicy != "disabled"
 		if nudge {
@@ -335,6 +344,7 @@ func runUserPromptSubmit(vaultRoot string, input *hookInput) {
 			QueryContext:          prompt,
 			QueryTags:             keywords,
 			ConversationSessionID: input.SessionID,
+			ScoringConfigHash:     scoringConfigHash(hookCfg),
 		}
 		if err := AppendRetrievalSession(vaultRoot, session); err != nil {
 			fmt.Fprintf(os.Stderr, "[jm hook] retrieval session: %v\n", err)
@@ -452,6 +462,11 @@ func spawnConsolidationIfNeeded(vaultRoot string, cfg Config) {
 	}
 
 	cmd := exec.Command(exe, "consolidate", "--trigger", "hook")
+	// Pin the child to the same vault explicitly rather than relying on it
+	// re-deriving the root from the executable's location (which breaks when
+	// os.Executable() is a test binary in a temp dir — there the child would
+	// otherwise fall back to cwd and operate on the wrong vault).
+	cmd.Env = append(os.Environ(), "JM_VAULT_ROOT="+vaultRoot)
 	devnull, err := os.OpenFile(os.DevNull, os.O_WRONLY, 0)
 	if err == nil {
 		cmd.Stdout = devnull

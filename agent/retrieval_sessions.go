@@ -27,6 +27,7 @@ type RetrievalSession struct {
 	QueryContext          string    `json:"query_context,omitempty"`
 	QueryTags             []string  `json:"query_tags,omitempty"`
 	ConversationSessionID string    `json:"conversation_session_id,omitempty"`
+	ScoringConfigHash     string    `json:"scoring_config_hash,omitempty"`
 }
 
 const (

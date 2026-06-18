@@ -97,7 +97,7 @@ func ActivationForType(m *MemoryEntry, now time.Time, cfg Config) float64 {
 	if m.Type == TypeKnowledge {
 		raw = 1.0
 	} else {
-		raw = ComputeActivation(m, now)
+		raw = squashActivation(ComputeActivation(m, now), cfg.MaxActivation)
 	}
 	floor := cfg.ActivationFloors[string(m.Type)]
 	if raw < floor {
@@ -106,10 +106,26 @@ func ActivationForType(m *MemoryEntry, now time.Time, cfg Config) float64 {
 	return raw
 }
 
+// squashActivation soft-bounds base-level activation with a smooth, monotonic
+// transform — M·tanh(raw/M) — so it asymptotes toward M without ever tying (unlike
+// a hard cap). This keeps a single count-inflated memory (e.g. counts inflated by
+// the historical access loop) from dominating the additive score: above the normal
+// range activation compresses into the band where β·relevance can compete, while
+// relative order among memories is preserved. max ≤ 0 disables the squash.
+func squashActivation(raw, max float64) float64 {
+	if max <= 0 {
+		return raw
+	}
+	return max * math.Tanh(raw/max)
+}
+
 // ScoreMemory computes the full retrieval score for a single memory.
 //
-//	Standard:  score = activation × relevance × confidence + surprise_bonus
-//	Knowledge: score = relevance × confidence + surprise_bonus (no time-based decay)
+//	score = base-level activation + β·relevance·confidence + surprise_bonus
+//
+// Additive (not multiplicative) so relevance can steer ranking instead of being
+// dominated by the unbounded activation term. Knowledge memories use a fixed
+// base-level activation of 1.0 (no time-based decay).
 func ScoreMemory(m *MemoryEntry, contextTags []string, queryIntent string, cfg Config, now time.Time) ScoredMemory {
 	relevance := ComputeRelevance(m, contextTags) + ComputeTypeBoost(m, queryIntent)
 	if relevance > 1.0 {
@@ -119,7 +135,7 @@ func ScoreMemory(m *MemoryEntry, contextTags []string, queryIntent string, cfg C
 	surprise := ComputeSurpriseBonus(m, cfg)
 
 	activation := ActivationForType(m, now, cfg)
-	total := activation*relevance*confidence + surprise
+	total := activation + cfg.RelevanceWeight*relevance*confidence + surprise
 
 	return ScoredMemory{
 		Memory:     m,

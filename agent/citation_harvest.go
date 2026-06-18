@@ -73,7 +73,7 @@ func harvestCitationsFromPreviousTurn(vaultRoot string, input *hookInput) {
 	if transcriptPath == "" {
 		return
 	}
-	harvestCitationsForConversation(vaultRoot, input.SessionID, transcriptPath, "user-prompt-submit harvest")
+	harvestCitationsForConversation(vaultRoot, input, transcriptPath, "user-prompt-submit harvest")
 }
 
 // harvestCitationsFromStop parses the last assistant turn for Memory/
@@ -87,15 +87,19 @@ func harvestCitationsFromStop(vaultRoot string, input *hookInput) {
 	if transcriptPath == "" {
 		return
 	}
-	harvestCitationsForConversation(vaultRoot, input.SessionID, transcriptPath, "stop-hook harvest")
+	harvestCitationsForConversation(vaultRoot, input, transcriptPath, "stop-hook harvest")
 }
 
-func harvestCitationsForConversation(vaultRoot, conversationSessionID, transcriptPath, ctxPrefix string) {
+func harvestCitationsForConversation(vaultRoot string, input *hookInput, transcriptPath, ctxPrefix string) {
 	cfg := LoadConfig(vaultRoot)
 	if !cfg.RetrievalSessionLogEnabled {
 		return
 	}
 
+	conversationSessionID := ""
+	if input != nil {
+		conversationSessionID = input.SessionID
+	}
 	rs, err := FindLatestRetrievalSessionForConversation(vaultRoot, conversationSessionID)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "[jm hook] citation harvest: find retrieval session: %v\n", err)
@@ -117,6 +121,8 @@ func harvestCitationsForConversation(vaultRoot, conversationSessionID, transcrip
 		return
 	}
 
+	recordMemoryUsage(vaultRoot, rs, turn, input, transcriptPath)
+
 	loaded := make(map[string]bool, len(rs.Loaded))
 	for _, k := range rs.Loaded {
 		loaded[strings.ToLower(k)] = true
@@ -132,8 +138,23 @@ func harvestCitationsForConversation(vaultRoot, conversationSessionID, transcrip
 			break
 		}
 	}
+	defer func() {
+		if err := markRetrievalSessionHarvested(vaultRoot, rs.SessionID); err != nil {
+			fmt.Fprintf(os.Stderr, "[jm hook] citation harvest: mark harvested: %v\n", err)
+		}
+	}()
+
 	if len(toCite) == 0 {
 		return
+	}
+
+	// Genuine use reinforces base-level activation (citation-gated model):
+	// system injection surfaces a memory but does not reinforce it; the
+	// assistant actually referencing it does. toCite keys are MemoryKey-format,
+	// identical to the access index's normalizeKey, so this lands on the right
+	// record.
+	if err := recordAccessBatch(vaultRoot, toCite, time.Now(), "citation"); err != nil {
+		fmt.Fprintf(os.Stderr, "[jm hook] citation activation reinforce: %v\n", err)
 	}
 
 	cLog, err := LoadCitations(vaultRoot)
@@ -150,9 +171,6 @@ func harvestCitationsForConversation(vaultRoot, conversationSessionID, transcrip
 	if err := SaveCitations(vaultRoot, cLog); err != nil {
 		fmt.Fprintf(os.Stderr, "[jm hook] citation harvest: save citations: %v\n", err)
 		return
-	}
-	if err := markRetrievalSessionHarvested(vaultRoot, rs.SessionID); err != nil {
-		fmt.Fprintf(os.Stderr, "[jm hook] citation harvest: mark harvested: %v\n", err)
 	}
 
 	if cfg.AdaptiveEdgeWeightingEnabled {

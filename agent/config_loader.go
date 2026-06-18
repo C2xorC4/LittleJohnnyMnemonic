@@ -163,6 +163,16 @@ func applyScalarOverrides(cfg *Config, s map[string]string) {
 		cfg.SurpriseBonusWeight = atofOrKeep(v, cfg.SurpriseBonusWeight)
 	}
 
+	if v, ok := s["relevance_weight"]; ok {
+		cfg.RelevanceWeight = atofOrKeep(v, cfg.RelevanceWeight)
+	}
+	if v, ok := s["max_activation"]; ok {
+		cfg.MaxActivation = atofOrKeep(v, cfg.MaxActivation)
+	}
+	if v, ok := s["citation_gated_activation"]; ok {
+		cfg.CitationGatedActivation = atobOrKeep(v, cfg.CitationGatedActivation)
+	}
+
 	if v, ok := s["archive_instead_of_delete"]; ok {
 		cfg.ArchiveInsteadOfDelete = atobOrKeep(v, cfg.ArchiveInsteadOfDelete)
 	}
@@ -355,6 +365,23 @@ func applyScalarOverrides(cfg *Config, s map[string]string) {
 	}
 	if v, ok := s["recall_log_retention_days"]; ok {
 		cfg.RecallLogRetentionDays = atoiOrKeep(v, cfg.RecallLogRetentionDays)
+	}
+
+	if v, ok := s["memory_usage_tracking_enabled"]; ok {
+		cfg.MemoryUsageTrackingEnabled = atobOrKeep(v, cfg.MemoryUsageTrackingEnabled)
+	}
+	if v, ok := s["memory_usage_tracking_verbosity"]; ok {
+		cfg.MemoryUsageTrackingVerbosity = stripQuotes(v)
+	}
+	if v, ok := s["memory_usage_tracking_log_path"]; ok {
+		cfg.MemoryUsageTrackingLogPath = stripQuotes(v)
+	}
+
+	if v, ok := s["dashboard_auto_refresh_enabled"]; ok {
+		cfg.DashboardAutoRefreshEnabled = atobOrKeep(v, cfg.DashboardAutoRefreshEnabled)
+	}
+	if v, ok := s["dashboard_refresh_cooldown_minutes"]; ok {
+		cfg.DashboardRefreshCooldownMinutes = atoiOrKeep(v, cfg.DashboardRefreshCooldownMinutes)
 	}
 
 	if v, ok := s["backup_enabled"]; ok {

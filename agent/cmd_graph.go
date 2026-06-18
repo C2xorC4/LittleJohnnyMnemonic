@@ -390,13 +390,17 @@ func openInBrowser(path string) error {
 	if err != nil {
 		abs = path
 	}
+	return openURL(abs)
+}
+
+func openURL(url string) error {
 	switch runtime.GOOS {
 	case "windows":
-		return exec.Command("cmd", "/c", "start", "", abs).Start()
+		return exec.Command("cmd", "/c", "start", "", url).Start()
 	case "darwin":
-		return exec.Command("open", abs).Start()
+		return exec.Command("open", url).Start()
 	default:
-		return exec.Command("xdg-open", abs).Start()
+		return exec.Command("xdg-open", url).Start()
 	}
 }
 

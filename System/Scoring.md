@@ -7,12 +7,24 @@ When a conversation begins or context is needed, memories are scored and ranked.
 ## Score Computation
 
 ```
-score(m, q) = activation(m) × relevance(m, q) × confidence(m) + surprise_bonus(m)
+score(m, q) = activation(m) + β · relevance(m, q) · confidence(m) + surprise_bonus(m)
 ```
 
 Where:
 - `m` = a memory entry
 - `q` = the current query/context
+- `β` = `relevance_weight` (default 8.0) — scales the [0,1] relevance term into
+  base-level-activation units so relevance can steer ranking.
+
+**This is additive, not multiplicative** (changed 2026-06-18, `SCORING_ALGO_VERSION = 2`).
+The old form `activation × relevance × confidence` let base-level activation — effectively
+unbounded — dominate relevance ~50× in the product, so ranking collapsed to activation
+order and recently/frequently accessed memories crowded out topically relevant ones. In the
+additive form base-level activation and the relevance term **add** (canonical ACT-R, where
+base-level and spreading/associative activation sum), so a strongly on-topic dormant memory
+can out-rank an off-topic active one. Confidence **weights the relevance term** rather than
+multiplying the whole score, so a high-activation low-confidence memory can't be dragged to
+the top by raw activation alone.
 
 ### Component 1: Activation (ACT-R Base Level)
 
@@ -39,6 +51,22 @@ Where `recency` = hours since `last_accessed`.
 | -1.0–0.0 | Fading — hasn't been accessed recently |
 | < -1.0 | Candidate for archival |
 
+**Soft bound (squash).** Raw base-level activation is passed through a smooth, monotonic
+squash before use: `activation' = M · tanh(activation / M)` where `M = max_activation`
+(default 2.0; 0 disables). Without it, an access count inflated by the historical retrieval
+feedback loop (observed 2026-06-18: counts up to ~168,000 → `ln` ≈ 12) dominates the additive
+score regardless of relevance. The squash asymptotes toward `M` without the flattening/ties
+of a hard cap, keeping activation in the band where `β · relevance` can compete while
+preserving relative order.
+
+**Citation-gated reinforcement.** Access events are tagged by source. With
+`citation_gated_activation: true` (default), system *injection* (the session-start and
+user-prompt-submit hooks surfacing a memory) does **not** advance the count/recency that feed
+base-level activation — only genuine use (the assistant actually citing a loaded memory,
+harvested by `citation_harvest`) and explicit CLI retrieval do. This breaks the feedback loop
+where injected memories re-pinned their own recency every turn — the mechanism that inflated
+counts in the first place.
+
 ### Component 2: Relevance
 
 Relevance measures semantic similarity between the memory and the current context. In the absence of embedding infrastructure, this is estimated heuristically:
@@ -53,7 +81,7 @@ When embedding infrastructure is available, replace with cosine similarity betwe
 
 ### Component 3: Confidence
 
-Direct multiplier from the memory's `confidence` field. A memory with confidence 0.3 contributes 30% of its potential score — it's uncertain and shouldn't dominate retrieval.
+Weights the relevance term (not the whole score): the relevance contribution is `β · relevance · confidence`. A memory with confidence 0.3 contributes only 30% of its potential *relevance* term — it's uncertain and shouldn't be pulled to the top on a topical match alone — while its base-level activation is unaffected.
 
 ### Component 4: Surprise Bonus
 
@@ -117,20 +145,24 @@ tags: [go, tooling, preference]
 Query context tags: [go, development, tooling]
 
 ```
-activation  = ln(7 × 96^(-0.3)) = ln(7 × 0.247) = ln(1.73) = 0.549
-relevance   = tag_match(2/3 × 0.2 cap 1.0) = 0.4  (conservative: 2 shared tags)
+activation  = ln(7 × 96^(-0.3)) = ln(1.73) = 0.549
+              squashed: 2 · tanh(0.549 / 2) = 0.536
+relevance   = tag_match(2 shared tags × 0.2) = 0.4
 confidence  = 0.95
 surprise    = 0.2 × 0.5 = 0.1
 
-score = 0.549 × 0.4 × 0.95 + 0.1 = 0.309
+score = 0.536 + 8 · 0.4 · 0.95 + 0.1 = 3.68
 
-0.309 > τ(0.3) → RETRIEVED
+3.68 > τ(1.0) → RETRIEVED
 ```
 
 If the same memory hadn't been accessed in 30 days (720 hours):
 ```
-activation  = ln(7 × 720^(-0.3)) = ln(7 × 0.131) = ln(0.917) = -0.087
-score       = -0.087 × 0.4 × 0.95 + 0.1 = 0.067
+activation  = ln(7 × 720^(-0.3)) = -0.087 → squashed -0.087 → floored to 0.4 (user floor)
+score       = 0.4 + 8 · 0.4 · 0.95 + 0.1 = 3.54
 
-0.067 < τ(0.3) → NOT RETRIEVED (but still exists, could be found if directly relevant)
+3.54 > τ(1.0) → STILL RETRIEVED — under the additive form a topically relevant memory
+surfaces even when dormant, because the relevance term carries it. (Under the old
+multiplicative form this scored 0.067 and was dropped — relevance could not rescue a low
+activation.)
 ```

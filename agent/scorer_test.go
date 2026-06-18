@@ -127,10 +127,11 @@ func TestScoreMemory_FullWorkflow(t *testing.T) {
 	contextTags := []string{"go", "development", "tooling"}
 	scored := ScoreMemory(m, contextTags, "", cfg, now)
 
-	// activation ≈ 0.549, relevance ≈ 0.4, confidence = 0.95, surprise = 0.1
-	// total ≈ 0.549 × 0.4 × 0.95 + 0.1 ≈ 0.309
-	if scored.Total < 0.2 || scored.Total > 0.5 {
-		t.Errorf("total score = %.4f, expected around 0.3 (per Scoring.md)", scored.Total)
+	// Additive ACT-R: activation ≈ 0.56 (squashed, M=2), relevance ≈ 0.4,
+	// confidence = 0.95, β = 8.0, surprise = 0.1
+	// total ≈ 0.56 + 8.0 × 0.4 × 0.95 + 0.1 ≈ 3.70
+	if scored.Total < 3.2 || scored.Total > 4.2 {
+		t.Errorf("total score = %.4f, expected around 3.70 (additive ACT-R)", scored.Total)
 	}
 
 	if scored.Total < cfg.RetrievalThreshold {

@@ -13,7 +13,8 @@ func cmdMetrics(vaultRoot string, args []string) {
 		fmt.Fprintln(os.Stderr, "subcommands:")
 		fmt.Fprintln(os.Stderr, "  compact     compress per-prompt recall entries older than the retention window into daily aggregates")
 		fmt.Fprintln(os.Stderr, "  compact-retrieval-sessions  archive and rewrite retrieval_sessions.jsonl (drop judge-prompt pollution)")
-		fmt.Fprintln(os.Stderr, "  dashboard   generate a self-contained static HTML metrics dashboard")
+		fmt.Fprintln(os.Stderr, "  dashboard   generate the Memory Health Cockpit (Metrics/dashboard.html)")
+		fmt.Fprintln(os.Stderr, "  backfill-usage  replay retrieval sessions against transcripts to backfill usage telemetry")
 		fmt.Fprintln(os.Stderr, "  serve       serve a live metrics dashboard over HTTP with SSE push updates")
 		os.Exit(1)
 	}
@@ -24,6 +25,8 @@ func cmdMetrics(vaultRoot string, args []string) {
 		cmdMetricsCompactRetrievalSessions(vaultRoot, args[1:])
 	case "dashboard":
 		cmdMetricsDashboard(vaultRoot, args[1:])
+	case "backfill-usage":
+		cmdMetricsBackfillUsage(vaultRoot, args[1:])
 	case "serve":
 		cmdMetricsServe(vaultRoot, args[1:])
 	default:
@@ -56,6 +59,7 @@ func cmdMetricsCompact(vaultRoot string, args []string) {
 		fmt.Printf("[dry-run] would compact %d granular entries older than %d days into daily aggregates\n", n, *window)
 	} else {
 		fmt.Printf("compacted %d granular entries older than %d days into daily aggregates\n", n, *window)
+		MaybeRefreshDashboard(vaultRoot, dashReasonCompact)
 	}
 }
 

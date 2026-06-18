@@ -34,8 +34,24 @@ type accessRecord struct {
 }
 
 type accessEvent struct {
-	Key string    `json:"key"`
-	Ts  time.Time `json:"ts"`
+	Key    string    `json:"key"`
+	Ts     time.Time `json:"ts"`
+	Source string    `json:"source,omitempty"` // "hook" | "session-start" | "cli" | "citation" | "" (legacy)
+}
+
+// accessReinforces reports whether an access event of the given source should
+// reinforce base-level activation (advance count + recency). System-injection
+// sources (hook, session-start) do NOT — surfacing a memory is not the same as
+// using it. Genuine use (citation), explicit CLI retrieval, and legacy/unknown
+// sources reinforce (fail-open, backward-compatible). Only consulted when
+// cfg.CitationGatedActivation is on.
+func accessReinforces(source string) bool {
+	switch source {
+	case "hook", "session-start":
+		return false
+	default:
+		return true
+	}
 }
 
 func accessEventsFile(vaultRoot string) string {
@@ -47,13 +63,15 @@ func accessBaseFile(vaultRoot string) string {
 
 // recordAccess appends a single access event. Append-only + one Write call per
 // line → atomic and lossless under concurrent writers.
-func recordAccess(vaultRoot, key string, ts time.Time) error {
-	return recordAccessBatch(vaultRoot, []string{key}, ts)
+func recordAccess(vaultRoot, key string, ts time.Time, source string) error {
+	return recordAccessBatch(vaultRoot, []string{key}, ts, source)
 }
 
 // recordAccessBatch appends one event per key at ts in a single open/close.
-// Used by retrieval, which loads a whole set at once.
-func recordAccessBatch(vaultRoot string, keys []string, ts time.Time) error {
+// Used by retrieval, which loads a whole set at once. source tags the access
+// origin so citation-gated activation can decide whether it reinforces
+// base-level activation (see accessReinforces).
+func recordAccessBatch(vaultRoot string, keys []string, ts time.Time, source string) error {
 	if len(keys) == 0 {
 		return nil
 	}
@@ -71,7 +89,7 @@ func recordAccessBatch(vaultRoot string, keys []string, ts time.Time) error {
 		if k == "" {
 			continue
 		}
-		line, err := json.Marshal(accessEvent{Key: k, Ts: ts})
+		line, err := json.Marshal(accessEvent{Key: k, Ts: ts, Source: source})
 		if err != nil {
 			continue
 		}
@@ -85,17 +103,21 @@ func recordAccessBatch(vaultRoot string, keys []string, ts time.Time) error {
 // loadAccessIndex returns the effective per-key access record: the base
 // snapshot with every logged event replayed on top (count summed, last_accessed
 // = max). Missing files are treated as empty.
-func loadAccessIndex(vaultRoot string) map[string]accessRecord {
+func loadAccessIndex(vaultRoot string, cfg Config) map[string]accessRecord {
 	idx := make(map[string]accessRecord)
 	if data, err := os.ReadFile(accessBaseFile(vaultRoot)); err == nil {
 		_ = json.Unmarshal(data, &idx)
 	}
-	replayAccessEvents(accessEventsFile(vaultRoot), idx)
+	replayAccessEvents(accessEventsFile(vaultRoot), idx, cfg)
 	return idx
 }
 
-// replayAccessEvents folds the events in path into idx.
-func replayAccessEvents(path string, idx map[string]accessRecord) {
+// replayAccessEvents folds the events in path into idx. When
+// cfg.CitationGatedActivation is set, injection-source events (hook,
+// session-start) are skipped entirely so they reinforce neither count nor
+// recency — only genuine use (citation) and CLI access feed base-level
+// activation. Legacy events (empty source) always reinforce.
+func replayAccessEvents(path string, idx map[string]accessRecord, cfg Config) {
 	f, err := os.Open(path)
 	if err != nil {
 		return
@@ -106,6 +128,9 @@ func replayAccessEvents(path string, idx map[string]accessRecord) {
 	for sc.Scan() {
 		var e accessEvent
 		if err := json.Unmarshal(sc.Bytes(), &e); err != nil || e.Key == "" {
+			continue
+		}
+		if cfg.CitationGatedActivation && !accessReinforces(e.Source) {
 			continue
 		}
 		r := idx[e.Key]
@@ -129,11 +154,12 @@ func foldAccessLog(vaultRoot string) error {
 		}
 		return err // e.g. transient sharing violation; caller retries next cycle
 	}
+	cfg := LoadConfig(vaultRoot)
 	idx := make(map[string]accessRecord)
 	if data, err := os.ReadFile(accessBaseFile(vaultRoot)); err == nil {
 		_ = json.Unmarshal(data, &idx)
 	}
-	replayAccessEvents(rotated, idx)
+	replayAccessEvents(rotated, idx, cfg)
 	data, err := json.MarshalIndent(idx, "", "  ")
 	if err != nil {
 		return err
@@ -168,7 +194,7 @@ func seedAccessIndex(vaultRoot string, memories []*MemoryEntry) error {
 // every downstream consumer (scoring, status, graph) sees current access
 // without reading it from frontmatter. No-op before migration (empty index).
 func mergeAccessIndex(vaultRoot string, memories []*MemoryEntry) {
-	idx := loadAccessIndex(vaultRoot)
+	idx := loadAccessIndex(vaultRoot, LoadConfig(vaultRoot))
 	if len(idx) == 0 {
 		return
 	}

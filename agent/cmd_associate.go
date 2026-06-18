@@ -162,7 +162,7 @@ func associateOutputFull(results []AssociatedMemory, keywords []string, context 
 		if len(matchParts) > 0 {
 			fmt.Printf("   Matched: %s\n", strings.Join(matchParts, " | "))
 		}
-		fmt.Printf("   Score: activation=%.3f × relevance=%.3f × confidence=%.2f\n",
+		fmt.Printf("   Score: activation=%.3f + β·relevance=%.3f·confidence=%.2f\n",
 			r.Activation, r.Relevance, m.Confidence)
 		fmt.Println()
 	}

@@ -76,7 +76,7 @@ func cmdRetrieve(vaultRoot string, args []string) {
 				}
 			}
 		}
-		if err := recordAccessBatch(vaultRoot, keys, now); err != nil {
+		if err := recordAccessBatch(vaultRoot, keys, now, "cli"); err != nil {
 			fmt.Fprintf(os.Stderr, "[!] Failed to record access: %v\n", err)
 		}
 	}
@@ -93,11 +93,12 @@ func cmdRetrieve(vaultRoot string, args []string) {
 			loaded = append(loaded, MemoryKey(s.Memory))
 		}
 		session := RetrievalSession{
-			SessionID:    sessionID,
-			Timestamp:    now,
-			Loaded:       loaded,
-			QueryContext: *intent,
-			QueryTags:    contextTags,
+			SessionID:         sessionID,
+			Timestamp:         now,
+			Loaded:            loaded,
+			QueryContext:      *intent,
+			QueryTags:         contextTags,
+			ScoringConfigHash: scoringConfigHash(cfg),
 		}
 		if err := AppendRetrievalSession(vaultRoot, session); err != nil {
 			fmt.Fprintf(os.Stderr, "[!] Failed to write retrieval session: %v\n", err)
@@ -200,7 +201,7 @@ func outputFull(retrieved []ScoredMemory, graph *MemoryGraph) {
 		}
 
 		// Show score breakdown
-		fmt.Printf("**Score breakdown:** activation=%.3f × relevance=%.3f × confidence=%.2f + surprise=%.3f",
+		fmt.Printf("**Score breakdown:** activation=%.3f + β·relevance=%.3f·confidence=%.2f + surprise=%.3f",
 			s.Activation, s.Relevance, s.Confidence, s.Surprise)
 		if s.Boost > 0 {
 			fmt.Printf(" + boost=%.3f", s.Boost)

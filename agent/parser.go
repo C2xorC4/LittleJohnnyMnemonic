@@ -596,7 +596,11 @@ func WriteMemoryEntry(entry *MemoryEntry) error {
 	buf.WriteString(entry.Body)
 	buf.WriteString("\n")
 
-	return os.WriteFile(entry.FilePath, buf.Bytes(), 0644)
+	if err := os.WriteFile(entry.FilePath, buf.Bytes(), 0644); err != nil {
+		return err
+	}
+	maybeRefreshDashboardForKnowledge(entry)
+	return nil
 }
 
 // WriteBufferEntry serializes a buffer entry back to disk (for hold_count updates).

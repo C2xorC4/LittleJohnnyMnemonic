@@ -5,8 +5,11 @@ Tunable parameters for the memory system. Edit values here; they are read at con
 ## Retrieval
 
 ```yaml
-retrieval_threshold: 0.3        # τ — minimum score to surface a memory
+retrieval_threshold: 1.0        # τ — additive-scoring scale (was 0.3 under the old multiplicative score)
 max_memories_loaded: 15         # cap on memories loaded per conversation start
+relevance_weight: 8.0           # β — scales [0,1] relevance into base-level-activation units (additive ACT-R score)
+max_activation: 2.0             # soft bound on base-level activation via M·tanh(raw/M); prevents a count-inflated memory from dominating; 0 disables
+citation_gated_activation: true # injection access (hook/session-start) does not reinforce activation; only genuine use (citations) + CLI retrieval do
 project_summary_mode: true      # load project titles + one-liner, not full body, unless context tags match
 creation_grace_days: 7          # memories created within this window are immune to archival regardless of score
 ```
@@ -94,19 +97,22 @@ swarm and exhaust memory. Two guards bound this:
   processes when the fallback IS enabled. Over-cap calls degrade to heuristics
   rather than spawning or blocking (filesystem semaphore in `$TMPDIR/jm-judge-slots`).
 
-> **This host (subscription auth, no API key): kill switch is ON**
-> (`judge_cli_fallback_enabled: false`). Judge quality is covered by
-> session-driven daydreams (Claude + Grok). Flip back to `true` (or set
-> `ANTHROPIC_API_KEY`) to restore autonomous LLM judging; the concurrency cap
-> then keeps the CLI path bounded.
+> **This host (subscription auth, no API key): CLI fallback is ON**
+> (`judge_cli_fallback_enabled: true`), bounded by `judge_cli_max_concurrent`
+> and the single-flight consolidation lock. The unbounded swarm that motivated
+> the kill switch was dominated by the `go test` fork bomb (a re-exec'd test
+> binary re-running the whole suite and fanning out judges, recursively) — now
+> remediated in `main_test.go`. Production hook spawns are linear and capped, so
+> autonomous LLM judging is left enabled here. Set `judge_cli_fallback_enabled:
+> false` (or `LJM_NO_JUDGE_CLI=1`) to hard-disable CLI judging if needed.
 
 ```yaml
 daydream_judge_enabled: true
 daydream_judge_threshold: 0.4               # min tag-overlap redundancy to trigger judge
 daydream_judge_candidates: 3                # top N related memories sent to judge as context
 daydream_redundancy_fallback_dampening: 0.3 # multiplier when API call fails (equivalent to Option B)
-judge_cli_fallback_enabled: false           # KILL SWITCH ON: no `claude -p` judge spawns (no API key on this host)
-judge_cli_max_concurrent: 2                  # host-wide cap on `claude -p` judges when fallback is re-enabled
+judge_cli_fallback_enabled: true            # CLI judge fallback enabled (bounded by cap below + single-flight lock); set false to kill `claude -p` spawns
+judge_cli_max_concurrent: 2                  # host-wide cap on simultaneous `claude -p` judges; over-cap calls degrade to heuristics
 ```
 
 ## Context Integrity
@@ -438,6 +444,22 @@ recall_tracking_log_path: Metrics/recall_log.jsonl
 # Entries outside this window are compressed into daily aggregates
 # by `jm metrics compact`. Default 30.
 recall_log_retention_days: 30
+```
+
+## Metrics Dashboard
+
+`jm metrics dashboard` writes a self-contained Memory Health Cockpit to
+`Metrics/dashboard.html`. When auto-refresh is enabled, the same generator
+runs after consolidation, recall-log compaction, autodream fires, and knowledge
+LTM writes — fail-soft, never blocking the triggering operation.
+
+```yaml
+# Regenerate Metrics/dashboard.html after vault-changing events.
+dashboard_auto_refresh_enabled: true
+
+# Minimum interval between cooldown-gated refreshes (autodream, knowledge).
+# Consolidation and metrics compact always refresh immediately.
+dashboard_refresh_cooldown_minutes: 5
 ```
 
 ## Knowledge Feedback (Citations)

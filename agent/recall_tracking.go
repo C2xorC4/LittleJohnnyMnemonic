@@ -35,6 +35,7 @@ type recallLogEntry struct {
 	BodyHitCounts map[string]int `json:"body_hit_counts,omitempty"` // verbose only: slug → body hit count
 	AvgBodyHits   float64        `json:"avg_body_hits"`             // mean body keyword hits per recalled memory
 	AvgRelevance  float64        `json:"avg_relevance"`             // mean combined relevance score per recalled memory
+	ZeroRecall    bool           `json:"zero_recall,omitempty"`     // prompt returned no memories from retrieval
 }
 
 // recallDayEntry is a compressed daily aggregate that replaces per-prompt
@@ -54,15 +55,28 @@ type recallDayEntry struct {
 // runUserPromptSubmit. Appends a recall record to the JSONL log. Never
 // blocks or panics — all errors are logged to stderr and swallowed.
 func writeRecallMetrics(vaultRoot string, results []AssociatedMemory, sessionID string, promptLen int) {
-	if len(results) == 0 {
-		return
-	}
 	cfg := LoadConfig(vaultRoot)
 	if !cfg.RecallTrackingEnabled {
 		return
 	}
+	logPath := filepath.Join(vaultRoot, cfg.RecallTrackingLogPath)
+	if len(results) == 0 {
+		appendRecallLog(logPath, buildZeroRecallLogEntry(sessionID, promptLen))
+		return
+	}
 	entry := buildRecallLogEntry(results, sessionID, promptLen, cfg.RecallTrackingVerbosity)
-	appendRecallLog(filepath.Join(vaultRoot, cfg.RecallTrackingLogPath), entry)
+	appendRecallLog(logPath, entry)
+}
+
+func buildZeroRecallLogEntry(sessionID string, promptLen int) recallLogEntry {
+	return recallLogEntry{
+		Timestamp:  time.Now().UTC().Format(time.RFC3339),
+		SessionID:  sessionID,
+		PromptLen:  promptLen,
+		Total:      0,
+		Counts:     map[string]int{},
+		ZeroRecall: true,
+	}
 }
 
 // compactRecallLog compresses per-prompt entries older than windowDays into

@@ -804,6 +804,9 @@ func appendAutodreamLog(vaultRoot string, res AutodreamRunResult, now time.Time)
 	if _, err := f.Write(append(line, '\n')); err != nil {
 		return fmt.Errorf("write log entry: %w", err)
 	}
+	if autodreamCountsForDashboard(res.Decision) {
+		MaybeRefreshDashboard(vaultRoot, dashReasonAutodream)
+	}
 	return nil
 }
 

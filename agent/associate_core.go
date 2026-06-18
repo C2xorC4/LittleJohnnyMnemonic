@@ -20,6 +20,10 @@ type AssociateOpts struct {
 	DiscriminatingMinIDF float64
 	// SkipDiscriminatingGate disables the high-IDF match requirement (tests).
 	SkipDiscriminatingGate bool
+	// Source tags recorded access events with their origin ("hook", "cli",
+	// "session-start") so citation-gated activation can decide whether the
+	// access reinforces base-level activation. Empty defaults to "cli".
+	Source string
 }
 
 // AssociateMemories runs the free-text → scored memories pipeline.
@@ -37,10 +41,13 @@ func AssociateMemories(
 		opts.Limit = 10
 	}
 	if opts.Threshold <= 0 {
-		opts.Threshold = 0.2
+		opts.Threshold = 1.0 // additive-scoring scale (was 0.2 under the old multiplicative score)
 	}
 	if opts.EnrichmentMinWeight <= 0 {
 		opts.EnrichmentMinWeight = 0.3
+	}
+	if opts.Source == "" {
+		opts.Source = "cli"
 	}
 
 	cfg := LoadConfig(vaultRoot)
@@ -86,7 +93,11 @@ func AssociateMemories(
 		}
 
 		surprise := ComputeSurpriseBonus(m, cfg)
-		score := activation*combinedRel*m.Confidence + surprise
+		// Additive ACT-R: base-level activation + relevance (scaled into activation
+		// units by β, gated by confidence) + surprise. Additive so a strongly
+		// on-topic dormant memory can out-rank an off-topic high-activation one,
+		// instead of relevance being swamped by the ~50× larger activation term.
+		score := activation + cfg.RelevanceWeight*combinedRel*m.Confidence + surprise
 
 		// Require at least some topical relevance
 		if combinedRel < 0.01 {
@@ -176,7 +187,7 @@ func AssociateMemories(
 				}
 			}
 		}
-		if err := recordAccessBatch(vaultRoot, accessKeys, now); err != nil {
+		if err := recordAccessBatch(vaultRoot, accessKeys, now, opts.Source); err != nil {
 			fmt.Fprintf(os.Stderr, "[!] Failed to record access: %v\n", err)
 		}
 

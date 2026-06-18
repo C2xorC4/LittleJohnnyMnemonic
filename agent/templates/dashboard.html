@@ -7,8 +7,18 @@
 <style>{{.CSS}}</style>
 </head>
 <body>
+
 <header id="topbar">
-  <div id="brand">{{.Title}}</div>
+  <div id="brand-block">
+    <div id="brand">LJM · <span>{{.VaultName}}</span></div>
+    <div id="subtitle">Memory Health Cockpit</div>
+  </div>
+  <div id="header-center">
+    <button class="range-btn" data-days="7">7d</button>
+    <button class="range-btn active" data-days="30">30d</button>
+    <button class="range-btn" data-days="90">90d</button>
+    <button class="range-btn" data-days="0">All</button>
+  </div>
   <div id="header-actions">
     <span id="generated-at"></span>
     <span id="live-indicator" style="display:none">
@@ -18,58 +28,151 @@
   </div>
 </header>
 
-<main id="dashboard">
+<main id="cockpit">
 
-  <section class="chart-card" id="card-recall">
-    <div class="card-header">
-      <h2>Recall / Day</h2>
-      <div class="card-header-right">
-        <div class="card-meta" id="meta-recall"></div>
-        <button id="recall-smooth-toggle" class="card-toggle active">7d avg</button>
+  <section id="kpi-strip">
+    <div class="kpi-card" style="--kpi-accent: var(--accent)">
+      <div class="kpi-label">Recalls</div>
+      <div class="kpi-value" id="kpi-recalls">—</div>
+      <div class="kpi-sub"><span id="kpi-recalls-sub">in selected range</span></div>
+    </div>
+    <div class="kpi-card" style="--kpi-accent: var(--c-bodyhits)">
+      <div class="kpi-label">Prompts / Day</div>
+      <div class="kpi-value" id="kpi-prompts">—</div>
+      <div class="kpi-sub"><span id="kpi-prompts-delta" class="kpi-delta">—</span> vs prior period</div>
+    </div>
+    <div class="kpi-card" style="--kpi-accent: var(--c-relevance)">
+      <div class="kpi-label">Body Hit Depth</div>
+      <div class="kpi-value" id="kpi-bodyhits">—</div>
+      <div class="kpi-sub"><span id="kpi-bodyhits-delta" class="kpi-delta">—</span> vs prior 7d</div>
+    </div>
+    <div class="kpi-card" style="--kpi-accent: var(--c-knowledge)">
+      <div class="kpi-label">Vault Size</div>
+      <div class="kpi-value" id="kpi-vault">—</div>
+      <div class="kpi-sub" id="kpi-vault-sub">memories</div>
+    </div>
+    <div class="kpi-card" style="--kpi-accent: var(--c-usage)">
+      <div class="kpi-label">Memory Usage</div>
+      <div class="kpi-value" id="kpi-usage">—</div>
+      <div class="kpi-sub"><span id="kpi-usage-sub">referenced / injected</span></div>
+    </div>
+    <div class="kpi-card" style="--kpi-accent: var(--warn)">
+      <div class="kpi-label">Buffer</div>
+      <div class="kpi-value" id="kpi-buffer">—</div>
+      <div class="kpi-sub" id="kpi-buffer-sub">entries / threshold</div>
+    </div>
+  </section>
+
+  <section class="panel" id="hero-panel">
+    <div class="panel-header">
+      <div class="panel-title">
+        Retrieval Health
+        <small>Recall volume by type · relevance &amp; body-hit quality overlay</small>
+      </div>
+      <div class="panel-controls">
+        <button class="toggle-btn active" id="smooth-toggle">7d avg lines</button>
+        <button class="info-btn" id="info-btn" title="Methodology">i</button>
       </div>
     </div>
-    <div class="canvas-wrap"><canvas id="chart-recall" height="200"></canvas></div>
-    <div class="legend" id="legend-recall"></div>
-  </section>
-
-  <section class="chart-card" id="card-promotes">
-    <div class="card-header">
-      <h2>Memory Promotions / Day</h2>
-      <div class="card-meta" id="meta-promotes"></div>
+    <div class="panel-body">
+      <div class="canvas-wrap"><canvas id="chart-hero" height="260"></canvas></div>
     </div>
-    <div class="canvas-wrap"><canvas id="chart-promotes" height="200"></canvas></div>
+    <div id="hero-legend"></div>
   </section>
 
-  <section class="chart-card" id="card-depth">
-    <div class="card-header">
-      <h2>Vault Depth Over Time</h2>
-      <div class="card-meta" id="meta-depth"></div>
+  <section class="panel" id="adherence-panel">
+    <div class="panel-header">
+      <div class="panel-title">
+        Memory Adherence
+        <small>Injection (hook layer) vs usage (model layer) · zero-recall prompts</small>
+      </div>
+      <div class="panel-controls">
+        <button class="toggle-btn active" id="usage-live-only-toggle" title="Usage KPI, adherence chart, and model table from live hook telemetry only">live only</button>
+      </div>
     </div>
-    <div class="canvas-wrap"><canvas id="chart-depth" height="200"></canvas></div>
-    <div class="legend" id="legend-depth"></div>
-  </section>
-
-  <section class="chart-card" id="card-daydream">
-    <div class="card-header">
-      <h2>Daydream Activity / Day</h2>
-      <div class="card-meta" id="meta-daydream"></div>
+    <div class="panel-body">
+      <div class="canvas-wrap"><canvas id="chart-adherence" height="220"></canvas></div>
     </div>
-    <div class="canvas-wrap"><canvas id="chart-daydream" height="200"></canvas></div>
+    <div id="adherence-legend"></div>
+    <div id="adherence-callout"></div>
   </section>
 
-  <section class="chart-card" id="card-body-hits">
-    <div class="card-header">
-      <h2>Body Hit Depth / Day</h2>
-      <div class="card-meta" id="meta-body-hits">avg prompt-keyword hits per recalled memory · tag-only loads score 0 · semantic framing memories score 0 regardless of influence</div>
+  <section class="panel" id="model-panel">
+    <div class="panel-header">
+      <div class="panel-title">
+        Usage by Model
+        <small>Adherence failures attributed per model + runtime host</small>
+      </div>
     </div>
-    <div class="canvas-wrap"><canvas id="chart-body-hits" height="200"></canvas></div>
+    <div class="panel-body model-table-wrap">
+      <table id="model-table" class="model-table">
+        <thead>
+          <tr>
+            <th>Model</th>
+            <th>Host</th>
+            <th>Turns</th>
+            <th>Source</th>
+            <th>Usage</th>
+            <th>Zero-use</th>
+          </tr>
+        </thead>
+        <tbody id="model-table-body"></tbody>
+      </table>
+    </div>
   </section>
 
+  <div id="bottom-row">
+
+    <section class="panel" id="vault-panel">
+      <div class="panel-header">
+        <div class="panel-title">
+          Vault Composition
+          <small>Memory count by type over time</small>
+        </div>
+      </div>
+      <div class="panel-body">
+        <div class="canvas-wrap"><canvas id="chart-vault" height="200"></canvas></div>
+      </div>
+      <div id="vault-callout"></div>
+    </section>
+
+    <section class="panel" id="metabolism-panel">
+      <div class="panel-header">
+        <div class="panel-title">
+          Vault Metabolism
+          <small>Consolidation output &amp; background cognition</small>
+        </div>
+      </div>
+      <div class="subchart-stack">
+        <div class="panel-body">
+          <div class="subchart-label">Promotions / day</div>
+          <div class="canvas-wrap"><canvas id="chart-promotes" height="88"></canvas></div>
+        </div>
+        <div class="subchart-divider"></div>
+        <div class="panel-body">
+          <div class="subchart-label">Daydream fires / day</div>
+          <div class="canvas-wrap"><canvas id="chart-daydream" height="88"></canvas></div>
+        </div>
+      </div>
+    </section>
+
+  </div>
 </main>
 
+<div id="crosshair" data-date=""></div>
 <div id="tooltip" role="tooltip"></div>
 
-<script>window.__DASHBOARD_DATA__ = {{.Data}}; window.__DASHBOARD_MODE__ = '{{.Mode}}';</script>
+<div id="drawer-backdrop"></div>
+<aside id="drawer">
+  <div id="drawer-header">
+    <div id="drawer-date">—</div>
+    <button id="drawer-close" aria-label="Close">×</button>
+  </div>
+  <div id="drawer-body"></div>
+</aside>
+
+<script type="application/json" id="dashboard-data">{{.Data}}</script>
+<script>window.__DASHBOARD_MODE__ = '{{.Mode}}';</script>
 <script>{{.App}}</script>
 </body>
 </html>

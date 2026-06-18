@@ -11,18 +11,18 @@ func TestAccessIndex_LoadAggregatesBaseAndEvents(t *testing.T) {
 	vault := t.TempDir()
 	t0 := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
 	// Seed base via events then fold, then add more events.
-	if err := recordAccessBatch(vault, []string{"memory/a", "memory/a", "memory/b"}, t0); err != nil {
+	if err := recordAccessBatch(vault, []string{"memory/a", "memory/a", "memory/b"}, t0, ""); err != nil {
 		t.Fatal(err)
 	}
 	if err := foldAccessLog(vault); err != nil {
 		t.Fatal(err)
 	}
 	t1 := t0.Add(48 * time.Hour)
-	if err := recordAccess(vault, "memory/a", t1); err != nil {
+	if err := recordAccess(vault, "memory/a", t1, ""); err != nil {
 		t.Fatal(err)
 	}
 
-	idx := loadAccessIndex(vault)
+	idx := loadAccessIndex(vault, DefaultConfig())
 	if idx["memory/a"].Count != 3 {
 		t.Errorf("a count = %d, want 3", idx["memory/a"].Count)
 	}
@@ -48,13 +48,13 @@ func TestAccessIndex_ConcurrentAppendsLossless(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			for i := 0; i < perWriter; i++ {
-				_ = recordAccess(vault, "memory/hot", ts)
+				_ = recordAccess(vault, "memory/hot", ts, "")
 			}
 		}()
 	}
 	wg.Wait()
 
-	idx := loadAccessIndex(vault)
+	idx := loadAccessIndex(vault, DefaultConfig())
 	if got := idx["memory/hot"].Count; got != writers*perWriter {
 		t.Fatalf("lost events under concurrency: got %d, want %d", got, writers*perWriter)
 	}
@@ -64,14 +64,14 @@ func TestAccessIndex_FoldThenAppendNotLost(t *testing.T) {
 	vault := t.TempDir()
 	ts := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
 	for i := 0; i < 5; i++ {
-		_ = recordAccess(vault, "memory/x", ts)
+		_ = recordAccess(vault, "memory/x", ts, "")
 	}
 	if err := foldAccessLog(vault); err != nil {
 		t.Fatal(err)
 	}
 	// post-fold appends must accumulate on top of the folded base
-	_ = recordAccess(vault, "memory/x", ts)
-	if got := loadAccessIndex(vault)["memory/x"].Count; got != 6 {
+	_ = recordAccess(vault, "memory/x", ts, "")
+	if got := loadAccessIndex(vault, DefaultConfig())["memory/x"].Count; got != 6 {
 		t.Fatalf("count after fold+append = %d, want 6", got)
 	}
 }
@@ -88,7 +88,7 @@ func TestAccessIndex_SeedAndMerge(t *testing.T) {
 	}
 	// A fresh load of the same entry (simulating frontmatter that may be stale)
 	// must be overlaid with the sidecar value, plus any new events.
-	_ = recordAccess(vault, "memory/knowledge/k", seedTime.Add(time.Hour))
+	_ = recordAccess(vault, "memory/knowledge/k", seedTime.Add(time.Hour), "")
 	fresh := &MemoryEntry{Type: TypeKnowledge, AccessCount: 1, FilePath: m.FilePath, FileName: m.FileName}
 	mergeAccessIndex(vault, []*MemoryEntry{fresh})
 	if fresh.AccessCount != 43 { // 42 seeded + 1 event
