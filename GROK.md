@@ -52,9 +52,33 @@ On substantive turns where hook-loaded memories informed the response:
 2. Include **1–3** explicit source paths in the assistant reply — bare (`Memory/Project/job_move_2026`) or wiki (`[[Memory/Feedback/geo_constraint_no_california_no_relocation]]`). Paths must match keys from that session's loaded set.
 3. Weave content naturally; a brief inline parenthetical or "Grounded in:" line is enough — not announcement theater.
 
-Manual bootstrap when needed: `jm associate --cite "<key>,<context>,true" --session <id>`.
+Manual fallback: `jm associate --cite "<key>,<context>,true" --session <id>`.
 
-PR3 (learned-edge PMI) stays gated until stop-harvested citations accumulate across real sessions.
+**Pilot state (2026-06-22):** operational observe phase. 14 operator-vetted
+`learned` pairs seeded via `jm learn-edges apply-bootstrap`; citation harvest
+is the `edge_usage` write path. Weights are moving (8 non-default as of
+post-bootstrap `jm status`). **Still gated:** scope widen beyond `learned`;
+automated `learn-edges` (PMI/distinct-session filter); `jm benchmark` proof of
+retrieval lift. Citation drill remains load-bearing — organic stop-harvested
+paths across real sessions are the evidence base, not bootstrap alone.
+
+## Post-Change Documentation
+
+Documentation is part of the work, never skipped post-change — see
+[`CLAUDE.md` § Post-Change Documentation](CLAUDE.md) for the authoritative
+seven-item checklist. The only judgment call is *which* records a change
+touches, never *whether* to update them. Specifically for Grok sessions:
+
+- **Mirror protocol changes here.** `GROK.md` is item #2's Grok target. Any
+  behavioral-rule or tooling change that a Grok session must see at a glance —
+  or any Grok-specific integration detail (hook events, citation drill, pilot
+  state) — is updated in this file as well as `CLAUDE.md`.
+- **Update the memory layer, not just the docs.** Semantic/project memories
+  that *theorize about a subsystem you changed* (checklist #6) and any memory
+  naming a *future change, planned fix, known bug, or "not-yet-implemented"
+  status* for what you changed (checklist #7) must be reconciled to the new
+  reality. A confident stale memory reads as knowledge, not as an old note —
+  that's the drift this rule exists to stop.
 
 ## Quick Reference
 
@@ -63,6 +87,7 @@ PR3 (learned-edge PMI) stays gated until stop-harvested citations accumulate acr
 | **Write to Buffer/** | During conversation, when you observe something worth remembering |
 | **Read from Memory/** | At conversation start (hooks handle this), or when context requires recall |
 | **Consolidate** | At compaction, when Buffer/ exceeds 20 entries, or when explicitly asked |
+| **Document post-change** | Always — protocol docs (both files), affected memories, stale forward-pointers. See above. |
 | **Never** | Write directly to Memory/ during conversation (always buffer first) |
 
 See [`CLAUDE.md`](CLAUDE.md) for the complete protocol.

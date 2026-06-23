@@ -201,17 +201,23 @@ The `associate` command flags memories where the current context contains concep
 
 After implementing any change — code, config, behavioral rule, architecture — documentation is part of the work, not a follow-up. Implementation is not done until the relevant records are current.
 
+Documentation is **never** skipped post-change. The only judgment call is
+*which* records a given change touches (scope matching, below) — not *whether*
+to update them.
+
 **Checklist after any change:**
 
 1. **Buffer entries** — for any LTM memory affected by the change (feedback rules updated, project state changed, new behavioral constraints)
-2. **CLAUDE.md** — update the relevant protocol section if behavior or tooling changed
+2. **Protocol docs — both `CLAUDE.md` and `GROK.md`** — update the relevant protocol section if behavior or tooling changed. `CLAUDE.md` is authoritative and `GROK.md` defers to it for full detail, but `GROK.md` is the Grok entry point, so any rule a Grok session must see at a glance (or any Grok-specific integration detail) is mirrored there. A behavioral-rule change touches both by default.
 3. **EXECUTIVE_SUMMARY.md** — close any gap that shipped; add any new capability to the timeline; update open questions that were answered
 4. **Ingestion manifests** — if a Knowledge entry was added, superseded, or enriched
 5. **Other reflection docs** — if a post-mortem or assessment is stale, note the update
+6. **Subsystem-theorizing memories** — any `Memory/` entry (usually `Semantic/`, sometimes `Project/`/`Episodic/`) that *describes, models, or theorizes about the subsystem you changed* must be re-read and reconciled against the new reality. Buffer the enrichment (don't write LTM directly unless this is a user-directed consolidation). This is the layer that rots silently: `EXECUTIVE_SUMMARY` is tended, but the semantic entries that explain *why* a subsystem works drift behind the code and then poison future inferences. If you changed scoring, the entry theorizing about scoring is in scope.
+7. **Forward-reference reconciliation** — any memory that names a *future* change, a planned fix, a known bug, a "TODO", or an "open / not-yet-implemented / pending" status **for the thing you just changed** must be updated to reflect that the future has arrived. A memory that says "X is not yet implemented" becomes a wrong inference the moment X ships. Grep your own memory layer for stale forward-pointers to the subsystem you touched and close them — mark resolved, name what actually shipped, and identify any *remaining* gap precisely rather than leaving the blanket "open."
 
-**The failure mode this prevents:** a change ships, the code is correct, but the protocol docs still describe the old behavior, gap tables still list the gap as open, and future sessions make decisions based on stale records. Documentation drift is a correctness problem, not a hygiene problem.
+**The failure mode this prevents:** a change ships, the code is correct, but the protocol docs still describe the old behavior, gap tables still list the gap as open, semantic memories still theorize about a design that no longer exists, and forward-pointers still promise fixes that already landed — so future sessions make decisions on stale records. Documentation drift is a correctness problem, not a hygiene problem. It is worst in the memory layer, because a confident stale memory reads as *knowledge*, not as an out-of-date note.
 
-**Scope matching:** not every change needs all five. A minor bug fix doesn't need a CLAUDE.md update. A behavioral rule change always does. Use judgment — but err toward updating.
+**Scope matching:** not every change touches all seven records. A minor bug fix may touch only #1. A behavioral-rule change always touches #1, #2, and usually #6. A subsystem change that closes a tracked gap touches #3, #6, and #7. Use judgment about *which* records — never about *whether* to document. Err toward updating.
 
 ## Consolidation
 
