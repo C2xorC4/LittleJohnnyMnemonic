@@ -222,8 +222,9 @@ coactivation_max_contexts: 5    # sample contexts stored per pair
 ### Adaptive Edge Weighting (pilot)
 
 Citation-driven per-link weight adjustment layered on top of the
-relationship-type `edge_weights` above. Off by default; opt in once
-the retrieval session log and citation discipline are in place.
+relationship-type `edge_weights` above. Pilot is **enabled**; scope
+`learned` only. Operator bootstrap (2026-06-22) seeded vetted pairs;
+observe phase gates scope widen and automated `learn-edges`.
 
 When enabled:
 

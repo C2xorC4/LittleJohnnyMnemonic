@@ -119,8 +119,11 @@ func benchmarkRetrieveCheck(args []string) {
 			continue
 		}
 		assoc, _, _, err := AssociateMemories(vault, task.Prompt, AssociateOpts{
-			Limit:        15,
-			Threshold:    0.2,
+			Limit: 15,
+			// Threshold 0 → AssociateMemories applies its production default (1.0,
+			// additive-scoring scale). Must match the production hook path; a
+			// hardcoded 0.2 here measured a looser-than-production gate.
+			Threshold:    0,
 			UpdateAccess: false,
 		})
 		if err != nil {

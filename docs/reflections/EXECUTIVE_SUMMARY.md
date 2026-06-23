@@ -25,6 +25,7 @@ associative connections to other entries; *Stale* = not accessed in 30+ days.
 | 2026-05-15 | **170** | 427 | 6 | 51% | 58% |
 | 2026-05-22 | 32 | 546 | 11 | 60% | 67% |
 | 2026-06-05 | 5 | 562 | 11 | 61% | 14 stale / 422 topic-dormant† |
+| 2026-06-22 | 2 | 569 | 11 | 60% | 16 stale / 429 topic-protected dormant† |
 
 The 170-entry buffer on 2026-05-15 represents a backlog — consolidation
 wasn't keeping pace with the write rate. Hook-level triggers and a scheduled
@@ -83,6 +84,10 @@ etc.), see the per-assessment documents.
 | → Jun 16 | **Citation harvest** — correlates assistant `Memory/` path citations against the preceding retrieval session loaded set | ✓ |
 | → Jun 16 | **Host-aware daydream dispatch** — volley commitments, scheduler-host availability, heartbeat activity detection; active skip window default 0→45m | ✓ |
 | → Jun 16 | **`jm benchmark` harness** — comparative LJM-on/off eval across Claude/Grok arms (fixtures in `benchmarks/`) | ✓ |
+| → Jun 18 | **Additive ACT-R scoring overhaul** — multiplicative → additive score; soft activation squash (`M·tanh(raw/M)`); citation-gated activation (injection no longer reinforces); `SCORING_ALGO_VERSION=2` + `scoring_config_hash` for attributable tuning | ✓ |
+| → Jun 22 | **Learned-edge bootstrap tooling** — `jm learn-edges propose` / `apply-bootstrap --ids` for operator-vetted `learned` pairs; `jm backfill-edge-usage` replays eligible citations | ✓ |
+| → Jun 22 | **Adaptive-edge pilot bootstrap** — batches 1–2 applied (14 operator-approved pairs: IDs 1–6, 8–12, 14–16); broke chicken-and-egg of zero `learned` edges under `learned`-only scope | ✓ |
+| → Jun 22 | **`adaptive_edge_scope` YAML-array parse fix** — `["learned"]` in Config no longer parsed as a literal bracket string (scope matching was silently failing) | ✓ |
 
 ---
 
@@ -96,8 +101,8 @@ never removed.
 | Memory shapes responses but doesn't gate actions | **Partial** — measurable via rule-judge (50% failure rate); not yet closed |
 | Training-override memories have correct durability | **Closed** — 6 tracked at lowest decay rate |
 | Substrate's own retrieval math is a potential attack surface | **Partial** — T7 fixed (non-root CLAUDE.md gated by hash approval); retrieval scoring itself not yet hardened |
-| Usage patterns feed back into what gets retrieved | **Closed** — adaptive edges enabled May 15 |
-| Most memories are unlinked (target: <30%) | **Open** — 51% unlinked, unchanged |
+| Usage patterns feed back into what gets retrieved | **Partial** — pilot operational after Jun 22 bootstrap (8 reinforced `learned` edges); citation-harvest write path live; scope still `learned` only; observe phase before widen or auto `learn-edges` |
+| Most memories are unlinked (target: <30%) | **Open** — 60% unlinked (340/569); `jm lint-links` reframed as mostly one-way, not absent — graph still sparse |
 | Stale-memory ratio (possible echo chamber) | **Reframed** — activation floors split "stale" from "topic-dormant." 14 project memories genuinely stale; 422 dormant correctly (protected). Raw % went up; meaningful % shrank. |
 | `jm graph` accesses leave no signal | **Open** — visualization reads memory without logging the access |
 | Buffer consolidation cadence keeps pace with write rate | **Improved** — three-layer trigger added; backlog still exists |
@@ -142,18 +147,22 @@ example). The behavioral measurement pipeline now puts a number on this:
 a commonly-fired behavioral rule is rejected 50% of the time even when the
 memory is loaded. The gap is real and quantified.
 
-**Sparse connections and stale access patterns.** 60% of memories are
-unlinked; 67% haven't been accessed in over 30 days. Consolidation adds
-entries faster than it connects them. Whether the stale ratio reflects
-correct selectivity or an echo chamber forming is still an open question.
+**Sparse connections and stale project facts.** 60% of memories are
+unlinked; 16 project memories are genuinely stale (confidence decay pending).
+429 topic-protected dormant memories are correctly inactive between relevant
+sessions. Consolidation adds entries faster than it connects them. The June 18
+scoring overhaul fixed a separate pathology: a hook access feedback loop that
+entrenched ~8 memories at activation ~12 regardless of query topic.
 
 **Activation follows a deployment gate, not momentum.** Code ships when
 it's done; activation happens only after sync, backup, and recovery paths
 are confirmed. Auto-daydream sat behind a flag; adaptive edges followed the
-same pattern. This is deliberate — features that touch retrieval behavior
-can degrade outputs in ways that aren't visible mid-session, and a crash
-during sync is a bad time to discover the gap. The gap between "built" and
-"running" is the gate working correctly, not a deficiency.
+same pattern until 2026-06-22, when operator bootstrap moved the pilot
+from inert to observe phase (weights moving; scope widen still gated).
+This is deliberate — features that touch retrieval behavior can degrade
+outputs in ways that aren't visible mid-session, and a crash during sync
+is a bad time to discover the gap. The gap between "built" and "running"
+is the gate working correctly, not a deficiency.
 
 ---
 
@@ -170,9 +179,11 @@ Open questions across assessments. Closed when there's evidence.
    request made since the incident. The natural experiment ran; the result is
    that loaded memory is shaping boundary behavior across sessions.
 
-2. **Is the hot-set retrieval pattern signal or pathology?** 58% stale
-   either means the system is correctly focused on the most relevant
-   material, or a feedback loop is forming. Needs a structural test.
+2. **Is the hot-set retrieval pattern signal or pathology?** **Partially
+   answered (2026-06-18):** it was pathology — a hook access feedback loop
+   entrenched ~8 memories at activation ~12 regardless of topic. Fixed via
+   citation-gated activation + squash. Whether topic-protected dormancy (429
+   memories) reflects correct selectivity vs. echo chamber remains open.
 
 3. **Does adaptive edge weighting produce confident-but-incomplete paths?**
    A daydream surfaced a risk: reinforcing frequently co-cited edges while
@@ -180,13 +191,16 @@ Open questions across assessments. Closed when there's evidence.
    structurally-incomplete retrieval. **Gap 3 closed (2026-05-22):**
    `AppendRetrievalSession` is now wired into the hook path; conversational
    retrieval sessions write to `retrieval_sessions.jsonl`. **Gap 1 closed
-   (confirmed 2026-06-05):** `retrieval_session_log_enabled: true` in Config.md;
-   `retrieval_sessions.jsonl` is accumulating (~83MB). **Pollution fixed
-   (2026-06-16):** internal judge/consolidation invocations (~99% of entries)
-   no longer log; run `jm compact-retrieval-sessions` to retroactively clean.
-   One gap remains: (2) `pickStableTrace` needs a code path that writes to and
-   reads `edge_usage.jsonl`. Until that closes, edge weights don't move. Signal
-   is piling up; nothing is consuming it.
+   (confirmed 2026-06-05):** `retrieval_session_log_enabled: true` in Config.md.
+   **Pollution fixed (2026-06-16):** internal judge/consolidation invocations
+   (~99% of entries) no longer log; file cleaned to ~615KB. **Citation harvest
+   live (2026-06-16)** — this is the `edge_usage.jsonl` *write* path (corrected
+   diagnosis: not `pickStableTrace`). **Bootstrap applied (2026-06-22):** 14
+   operator-vetted `learned` pairs seeded; 8 edges now carry non-default
+   effective weight after backfill + organic citations. **Still open:** (a)
+   `pickStableTrace` *read* from `edge_usage` for daydream replay (separate from
+   citation write); (b) whether reinforcement produces retrieval lift — needs
+   `jm benchmark` and organic citation accumulation in observe phase.
 
 4. **T7 architectural response.** ~~Not yet designed.~~ Shipped May 22.
    Non-root CLAUDE.md files in trusted repos now require SHA256 approval
@@ -206,18 +220,37 @@ Open questions across assessments. Closed when there's evidence.
    The fix is read-modify-write-fresh in those sites; deferred. Lower acuity now
    that retrieval and (gated) consolidation are handled.
 
-6. **Adaptive-edge pilot still produces 0 reinforced edges — corrected
-   diagnosis (2026-06-11).** Not just the `edge_usage.jsonl` write path: the
-   manual `jm associate --cite` write path exists (v0) but is never invoked, and
-   the automated `pickStableTrace` path is unbuilt. Compounding that, the
-   `learn-edges` signal itself (raw co-activation count) is dominated by hub
-   base-rate frequency and within-session repetition — needs lift/PMI +
-   distinct-session normalization before it produces meaningful learned edges.
+6. **Adaptive-edge pilot — observe phase (2026-06-22).** **Partially closed.**
+   The Jun 22 assessment misdiagnosed gap 2: the `edge_usage.jsonl` write path
+   is citation harvest (`citation_harvest.go` → `RecordEdgeUsageFromCitation`),
+   not `pickStableTrace`. The real blocker was chicken-and-egg: zero
+   `relationship: learned` edges while `adaptive_edge_scope` is `learned` only.
+   Operator bootstrap (batches 1–2, 14 approved pairs) + `parseCSVList` YAML fix
+   + `jm backfill-edge-usage` broke the stall: **8 edges with non-default
+   effective weight** as of post-bootstrap `jm status`. **Why we're waiting:**
+   accumulate organic stop-harvested citations across real sessions; run
+   `jm benchmark` for retrieval lift; add PMI/distinct-session filter before
+   automated `learn-edges`; keep scope at `learned` until maturity criteria met.
+   **Still open:** `pickStableTrace` read from `edge_usage` (daydream); automated
+   learned-edge proposal without PMI.
+
+7. **Retrieval ranking was activation-dominated — closed (2026-06-18).**
+   Multiplicative scoring + hook access feedback loop inflated counts to 114k–168k
+   (`ln ≈ 12`), burying relevance. Fixed: additive ACT-R, activation squash,
+   citation-gated reinforcement. **P0 provenance strip on retrieval rewrite — closed
+   (2026-06-11):** 235/419 knowledge entries had lost `source_document`; access
+   sidecar eliminates retrieval-time `.md` rewrites. **Backups un-restorable since
+   May 22 — closed (2026-06-11):** bounded tar copy + path-segment safety check.
+
+8. **`jm benchmark` harness built; experiments not yet run (2026-06-22).**
+   Comparative LJM-on/off eval infrastructure shipped June 16. No graded before/after
+   results in the assessment record yet.
 
 ---
 
 ## Assessment log
 
+- [2026-06-22](2026-06-22_assessment.md)
 - [2026-06-05](2026-06-05_assessment.md)
 - [2026-05-22](2026-05-22_assessment.md)
 - [2026-05-15 — week of May 10–15](2026-05-15_assessment.md)

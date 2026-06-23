@@ -193,6 +193,8 @@ func TestParseCSVList(t *testing.T) {
 		{"a,,b", []string{"a", "b"}},
 		{"a,b,", []string{"a", "b"}},
 		{",a,b", []string{"a", "b"}},
+		{`["learned"]`, []string{"learned"}},
+		{`[learned, related-to]`, []string{"learned", "related-to"}},
 	}
 	for _, c := range cases {
 		got := parseCSVList(c.in)

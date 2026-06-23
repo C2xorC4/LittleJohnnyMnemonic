@@ -19,7 +19,8 @@ Commands:
   rule-judge   Async behavioral-rule judge subprocess (spawned by stop hook)
   rule-firings Aggregate and display behavioral-rule firing log (see rule_firings.jsonl)
   ingestion    Book ingestion lifecycle: list / scan / sync (see Ingestion/_README.md)
-  learn-edges  Detect and create graph edges from co-activation patterns
+  learn-edges  Co-activation edge learning; propose/apply-bootstrap for pilot
+  backfill-edge-usage  Replay citations.json into edge_usage.jsonl reinforcement
   consolidate  Run consolidation phases on the buffer
   decay        Apply decay pass to all LTM entries
   heal         Rewrite all memories through the parser (maintenance/repair)
@@ -74,6 +75,8 @@ func main() {
 		cmdIngestion(vaultRoot, args)
 	case "learn-edges":
 		cmdLearnEdges(vaultRoot, args)
+	case "backfill-edge-usage":
+		cmdBackfillEdgeUsage(vaultRoot, args)
 	case "consolidate":
 		cmdConsolidate(vaultRoot, args)
 	case "decay":

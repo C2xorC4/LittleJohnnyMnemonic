@@ -449,14 +449,21 @@ func stripQuotes(s string) string {
 // the list of trimmed, non-empty entries. Used for config keys that hold
 // short ordered lists (activity sources, replay stable categories).
 func parseCSVList(s string) []string {
-	s = stripQuotes(s)
+	s = strings.TrimSpace(stripQuotes(s))
+	if s == "" {
+		return nil
+	}
+	// YAML inline arrays: ["learned"] or [learned, related-to]
+	if strings.HasPrefix(s, "[") && strings.HasSuffix(s, "]") {
+		s = strings.TrimSpace(s[1 : len(s)-1])
+	}
 	if s == "" {
 		return nil
 	}
 	parts := strings.Split(s, ",")
 	out := make([]string, 0, len(parts))
 	for _, p := range parts {
-		p = strings.TrimSpace(p)
+		p = strings.TrimSpace(stripQuotes(p))
 		if p != "" {
 			out = append(out, p)
 		}
