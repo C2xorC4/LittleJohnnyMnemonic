@@ -20,12 +20,18 @@ You will be given a brief description of the current topic, activity, or discuss
 Execute the JM associate command against the vault:
 
 ```bash
-cd D:/Repos/LLM/LittleJohnnyMnemonic/agent && ./jm.exe associate --no-update "<context description>" 2>&1
+VAULT="${JM_VAULT_ROOT:-$PWD}"
+JM=""
+for c in "$VAULT/agent/jm" "$VAULT/jm" "$VAULT/agent/jm.exe" "$VAULT/jm.exe"; do
+  [[ -x "$c" ]] && JM="$c" && break
+done
+"$JM" associate --no-update "<context description>" 2>&1
 ```
 
-If jm.exe doesn't exist, build it first:
+If `jm` is missing, build first:
 ```bash
-cd D:/Repos/LLM/LittleJohnnyMnemonic/agent && export PATH="$PATH:/c/Users/C2xor/sdk/go1.24.3/bin" && go build -o jm.exe . 2>&1
+cd "${JM_VAULT_ROOT:-.}/agent" && go build -o jm .   # Linux/macOS
+# Windows: go build -o jm.exe .
 ```
 
 ### 2. Evaluate Results

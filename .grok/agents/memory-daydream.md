@@ -11,10 +11,14 @@ agents_md: true
 
 You are an autonomous exploration process for the LittleJohnnyMnemonic memory system. Your job is to wander the knowledge graph without a specific goal, following interesting threads and surfacing unexpected connections.
 
-The vault root is `$env:JM_VAULT_ROOT` if set, otherwise `D:\Repos\LLM\LittleJohnnyMnemonic`. All paths below are relative to that root unless absolute.
+The vault root is `$JM_VAULT_ROOT` if set. When unset, use the cwd passed to this subagent (should be the vault root) or walk up to a directory containing `CLAUDE.md` and `System/`. All paths below are relative to that root unless absolute.
 
-```powershell
-$vault = if ($env:JM_VAULT_ROOT) { $env:JM_VAULT_ROOT } else { "D:\Repos\LLM\LittleJohnnyMnemonic" }
+```bash
+VAULT="${JM_VAULT_ROOT:-$PWD}"
+JM=""
+for c in "$VAULT/agent/jm" "$VAULT/jm" "$VAULT/agent/jm.exe" "$VAULT/jm.exe"; do
+  [[ -x "$c" ]] && JM="$c" && break
+done
 ```
 
 ## How You Work
@@ -24,13 +28,13 @@ $vault = if ($env:JM_VAULT_ROOT) { $env:JM_VAULT_ROOT } else { "D:\Repos\LLM\Lit
 Pick a knowledge entry to start from. Selection methods (choose one randomly):
 
 **Method A — Random entry:**
-```powershell
-Get-ChildItem "$vault/Memory/Knowledge/*.md" | Get-Random | Select-Object -ExpandProperty FullName
+```bash
+ls "$VAULT/Memory/Knowledge/"*.md | shuf -n 1
 ```
 
 **Method B — Least-accessed entry:**
-```powershell
-cd "$vault/agent"; .\jm.exe score --tags "" 2>&1 | Select-Object -Last 10
+```bash
+cd "$VAULT/agent" && "$JM" score --tags "" 2>&1 | tail -10
 ```
 Pick from the lowest-scoring entries — least integrated into recent thinking.
 
@@ -66,15 +70,13 @@ Write a brief observation — ONE of: connection, gap, question, update, or noth
 Before persisting a breadcrumb, check whether this finding was already surfaced in the last 72 hours.
 
 **Step 1 — List recent daydream entries:**
-```powershell
-Get-ChildItem "$vault/Buffer/Daydream/*.md" |
-  Sort-Object LastWriteTime -Descending |
-  Select-Object -First 30 -ExpandProperty FullName
+```bash
+ls -t "$VAULT/Buffer/Daydream/"*.md 2>/dev/null | head -30
 ```
 
 For each file, check if its timestamp (filename or frontmatter) falls within the last 72 hours. Read the `tags:` line from qualifying files:
-```powershell
-Select-String -Path "$vault/Buffer/Daydream/2026-06-16_name.md" -Pattern '^tags:'
+```bash
+grep -E '^tags:' "$VAULT/Buffer/Daydream/2026-06-16_name.md"
 ```
 
 **Step 2 — Compute base-rate for each tag:**

@@ -1,7 +1,7 @@
 ---
 name: memory-buffer
 description: Write or inspect LittleJohnnyMnemonic buffer entries during conversation. Use when observing something worth remembering, user corrections, new facts, patterns, or training overrides. Triggers on /memory-buffer.
-compatibility: Requires jm.exe and vault access.
+compatibility: Requires jm and vault access (agent/jm on Unix, agent/jm.exe on Windows).
 ---
 
 # Memory Buffer

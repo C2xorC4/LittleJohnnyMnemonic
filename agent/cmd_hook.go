@@ -175,6 +175,13 @@ func runSessionStart(vaultRoot string, input *hookInput) {
 		}
 	}
 
+	// Install health — detect wrong-platform / missing / project-scoped hooks.
+	// Never auto-fix: emit <ljm-install-warning> so the agent consults the user
+	// (fix via `jm install fix`, or ignore via `jm install ignore`).
+	if rep := CheckInstallHealth(vaultRoot); !rep.Healthy {
+		writeInstallHealthWarning(os.Stdout, rep)
+	}
+
 	// Spawn consolidation in the background if buffer is backed up. Detached
 	// and non-blocking — runs concurrently with the session-start context load.
 	spawnConsolidationIfNeeded(vaultRoot, LoadConfig(vaultRoot))

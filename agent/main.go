@@ -41,6 +41,7 @@ Commands:
   lint-links   Audit link health: asymmetric, dangling, prose-only, and concept-mention links
   recover-provenance  Recover frontmatter fields stripped by the round-trip bug, from backup history
   trust        Manage non-root instruction file approvals (trust approve <rel-path>)
+  install      Install health: check / fix per-platform hooks / ignore warnings
   machines     List registered machines and tooling (see System/machines.json)
   benchmark    Comparative evaluation harness (validate, retrieve-check, grade, …)
 
@@ -121,6 +122,8 @@ func main() {
 		cmdSyncAccess(vaultRoot, args)
 	case "trust":
 		cmdTrust(vaultRoot, args)
+	case "install":
+		cmdInstall(vaultRoot, args)
 	case "machines":
 		cmdMachines(vaultRoot, args)
 	case "metrics":

@@ -1,7 +1,7 @@
 ---
 name: memory-daydream
 description: Launch LittleJohnnyMnemonic daydream exploration — autonomous knowledge graph wandering. Use on substantive turns (long prompts or dense retrieval), at reflective breaks, or when the UserPromptSubmit hook emits a daydream-nudge. Triggers on /memory-daydream.
-compatibility: Requires jm.exe, spawn_subagent, and memory-daydream agent in ~/.grok/agents/ or .grok/agents/.
+compatibility: Requires jm, spawn_subagent, and memory-daydream agent in ~/.grok/agents/ or .grok/agents/.
 ---
 
 # Memory Daydream
@@ -23,11 +23,12 @@ Launch background daydream subagents (`subagent_type: memory-daydream`) to explo
 
 1. Resolve vault root (use for `cwd` on every spawn):
 
-```powershell
-$vault = if ($env:JM_VAULT_ROOT) { $env:JM_VAULT_ROOT } else { "D:\Repos\LLM\LittleJohnnyMnemonic" }
+```bash
+VAULT="${JM_VAULT_ROOT:-}"
+# If unset and cwd is the vault (or under it), walk up to CLAUDE.md + System/
 ```
 
-2. Spawn daydream subagents **in parallel** with `background: true` and `capability_mode: "all"` (needs shell for `jm.exe`, writes for breadcrumbs, read for exploration):
+2. Spawn daydream subagents **in parallel** with `background: true` and `capability_mode: "all"` (needs shell for `jm`, writes for breadcrumbs, read for exploration):
 
 ```
 spawn_subagent(
@@ -55,7 +56,7 @@ spawn_subagent(
 
 ## Verify agent is registered
 
-Open `/config-agents` — `memory-daydream` should appear. If missing, run `.\grok\install.ps1` from the vault root and restart the session (or press `r` in `/hooks`).
+Open `/config-agents` — `memory-daydream` should appear. If missing, run `./grok/install.sh` (Linux/macOS) or `.\grok\install.ps1` (Windows) from the vault root and restart the session (or press `r` in `/hooks`).
 
 ## Rules
 

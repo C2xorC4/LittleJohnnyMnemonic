@@ -8,21 +8,44 @@ This Obsidian vault implements a human-modeled memory system for LLM agents. **G
 
 | Component | Location |
 |---|---|
-| Lifecycle hooks | `~/.grok/hooks/ljm.json` (install via `grok/install.ps1`) |
+| Lifecycle hooks | `~/.grok/hooks/ljm.json` (install via `grok/install.sh` or `grok/install.ps1`) |
+| Hook template | `grok/hooks/ljm.template.json` (shared; installers expand per platform) |
 | Memory skills | `~/.grok/skills/memory-*` |
 | Background agents | `~/.grok/agents/memory-*.md` |
-| Hook runner | `grok/bin/run-hook.ps1` |
+| Hook runner | `grok/bin/run-hook` (Unix/Git Bash) / `grok/bin/run-hook.ps1` + `run-hook.cmd` (Windows) |
+| Agent binary | `agent/jm` (Unix) / `agent/jm.exe` (Windows) |
 | Global rules | `~/.grok/GROK.md` |
+
+LJM hooks are **global only** — do not add a live `ljm.json` under `.grok/hooks/` (double injection + platform breakage).
 
 ### Install
 
+```bash
+# Linux / macOS
+./grok/install.sh
+# builds agent/jm if missing, installs hooks/skills/agents
+```
+
 ```powershell
+# Windows
 .\grok\install.ps1
 ```
 
+### Install health (hooks self-check)
+
+SessionStart examines whether the live install matches this platform and vault. On problems it emits `<ljm-install-warning>` (wrong-platform runner, unsubstituted template, project-scoped `ljm.json`, missing binary, vault mismatch, etc.).
+
+| Action | Command |
+|---|---|
+| Inspect | `jm install check` |
+| Fix (after user permission) | `jm install fix` |
+| Suppress codes | `jm install ignore <code>…` / `--all` / `--clear` |
+
+**Protocol:** When `<ljm-install-warning>` appears, notify the user and **ask permission** before `jm install fix`. If they want to stop the nag, use `jm install ignore` (state in `~/.grok/ljm-install-ignore.json`). Never silently rewrite hooks.
+
 ### Hook Events
 
-- **SessionStart** — fixed-blend orientation (profiles, episodic, projects, machines)
+- **SessionStart** — fixed-blend orientation (profiles, episodic, projects, machines); install-health check; repo trust
 - **UserPromptSubmit** — association retrieval; emits `<retrieval-session id="..."/>` for adaptive-edge citations; daydream nudge on substantive prompts
 - **PreToolUse** — repo trust write-blocking for untrusted repos
 - **Stop** — auto-harvests `Memory/` citations from assistant output; behavioral rule logging; backup/consolidation triggers

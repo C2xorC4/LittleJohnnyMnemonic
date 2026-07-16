@@ -1,7 +1,7 @@
 ---
 name: memory-consolidate
 description: Run LittleJohnnyMnemonic buffer consolidation — promote buffer entries to long-term memory. Use when the user asks to consolidate, compact memory, or when Buffer/ exceeds threshold. Triggers on /memory-consolidate.
-compatibility: Requires jm.exe built in the LJM vault.
+compatibility: Requires jm built in the LJM vault (agent/jm on Unix, agent/jm.exe on Windows).
 ---
 
 # Memory Consolidate
@@ -14,20 +14,31 @@ Run the four-phase consolidation pipeline on `Buffer/`.
 - `/compact` or conversation compaction event
 - Buffer exceeds 20 entries (hooks may auto-trigger in background)
 
+## Resolve vault + jm
+
+```bash
+VAULT="${JM_VAULT_ROOT:-}"
+JM=""
+for c in "$VAULT/agent/jm" "$VAULT/jm" "$VAULT/agent/jm.exe" "$VAULT/jm.exe"; do
+  [[ -n "$VAULT" && -x "$c" ]] && JM="$c" && break
+done
+[[ -z "$JM" && -x ./agent/jm ]] && JM=./agent/jm
+[[ -z "$JM" && -x ./agent/jm.exe ]] && JM=./agent/jm.exe
+```
+
 ## Steps
 
 1. Check buffer status:
 
-```powershell
-$jm = if ($env:JM_VAULT_ROOT) { Join-Path $env:JM_VAULT_ROOT "agent\jm.exe" } else { "D:\Repos\LLM\LittleJohnnyMnemonic\agent\jm.exe" }
-& $jm buffer count
-& $jm status
+```bash
+"$JM" buffer count
+"$JM" status
 ```
 
 2. Run consolidation (foreground — user-initiated):
 
-```powershell
-& $jm consolidate
+```bash
+"$JM" consolidate
 ```
 
 3. Review output: promoted, merged, held, archived counts.

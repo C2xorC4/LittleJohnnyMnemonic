@@ -433,6 +433,21 @@ Metrics/         → Consolidation logs, coactivation data
 System/          → Architecture docs, schema, scoring, config
 ```
 
+## Install Health Protocol
+
+The `session-start` hook examines whether LJM is correctly installed for **this platform and vault** (global Grok hooks runner, unsubstituted templates, project-scoped `ljm.json`, native `jm` binary, vault path mismatch; light checks on Claude `settings.json` when LJM is present there). On problems it emits `<ljm-install-warning>` **before** `<memory-context>`.
+
+**When `<ljm-install-warning>` is present:**
+1. Immediately notify the user — show issue codes, paths, and summaries from the block
+2. **Ask permission** before remediating — do not silently rewrite hooks or delete project files
+3. If the user approves a fix: run `jm install fix` (rewrites `~/.grok/hooks/ljm.json` for this platform + vault; removes project `.grok/hooks/ljm.json` if present). Ask them to press `r` in `/hooks` or restart the session
+4. If the user wants to ignore: `jm install ignore <code>…`, `jm install ignore --all`, or `jm install ignore --clear`. State lives in `~/.grok/ljm-install-ignore.json`
+5. Inspect anytime: `jm install check`
+
+Platform installers (`grok/install.sh`, `grok/install.ps1`) remain the full path for skills/agents/global rules; `jm install fix` targets hooks (the failure mode that breaks sessions). Claude `settings.json` is reported but not auto-edited.
+
+Mirror of this protocol for Grok entry points: [`GROK.md`](GROK.md) § Install health.
+
 ## Repo Trust Protocol
 
 The `session-start` hook runs a trust check on the current working directory before loading memories. When a repository containing unvetted instruction files is detected, a `<repo-trust-warning>` block is emitted before the `<memory-context>` block. Two warning levels exist:

@@ -88,6 +88,8 @@ etc.), see the per-assessment documents.
 | → Jun 22 | **Learned-edge bootstrap tooling** — `jm learn-edges propose` / `apply-bootstrap --ids` for operator-vetted `learned` pairs; `jm backfill-edge-usage` replays eligible citations | ✓ |
 | → Jun 22 | **Adaptive-edge pilot bootstrap** — batches 1–2 applied (14 operator-approved pairs: IDs 1–6, 8–12, 14–16); broke chicken-and-egg of zero `learned` edges under `learned`-only scope | ✓ |
 | → Jun 22 | **`adaptive_edge_scope` YAML-array parse fix** — `["learned"]` in Config no longer parsed as a literal bracket string (scope matching was silently failing) | ✓ |
+| → Jul 16 | **Cross-platform Grok install** — shared `ljm.template.json`, Unix `install.sh` + `run-hook`, Windows `install.ps1` + `run-hook.ps1`; project-level `ljm.json` removed (global-only) | ✓ |
+| → Jul 16 | **Install-health hook self-check** — SessionStart detects wrong-platform / unsubstituted / project-scoped hooks; `<ljm-install-warning>` → consult user → `jm install fix` or `jm install ignore` | ✓ |
 
 ---
 

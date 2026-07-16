@@ -1,0 +1,72 @@
+#!/usr/bin/env bash
+# Platform-aware LJM Grok hook runner (Unix + Git Bash/MSYS/Cygwin on Windows).
+# Native Windows (no bash): use run-hook.cmd → run-hook.ps1.
+# Usage: run-hook <session-start|user-prompt-submit|pre-tool-use|stop>
+set -euo pipefail
+
+Event="${1:-}"
+case "$Event" in
+  session-start|user-prompt-submit|pre-tool-use|stop) ;;
+  *)
+    echo "Usage: $0 <session-start|user-prompt-submit|pre-tool-use|stop>" >&2
+    exit 2
+    ;;
+esac
+
+if [[ -n "${JM_VAULT_ROOT:-}" ]]; then
+  vaultRoot="$JM_VAULT_ROOT"
+else
+  # grok/bin → vault root
+  vaultRoot="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+fi
+
+# Normalize Windows-style paths when running under Git Bash / MSYS.
+case "$(uname -s 2>/dev/null || true)" in
+  MINGW*|MSYS*|CYGWIN*)
+    if command -v cygpath >/dev/null 2>&1; then
+      vaultRoot="$(cygpath -u "$vaultRoot" 2>/dev/null || echo "$vaultRoot")"
+    fi
+    prefer_exe=1
+    ;;
+  *)
+    prefer_exe=0
+    ;;
+esac
+
+# Prefer the platform-native binary; fall back across layouts.
+candidates=()
+if [[ "$prefer_exe" -eq 1 ]]; then
+  candidates=(
+    "$vaultRoot/jm.exe"
+    "$vaultRoot/agent/jm.exe"
+    "$vaultRoot/jm"
+    "$vaultRoot/agent/jm"
+  )
+else
+  candidates=(
+    "$vaultRoot/jm"
+    "$vaultRoot/agent/jm"
+    "$vaultRoot/jm.exe"
+    "$vaultRoot/agent/jm.exe"
+  )
+fi
+
+jm=""
+for candidate in "${candidates[@]}"; do
+  if [[ -x "$candidate" || -f "$candidate" ]]; then
+    jm="$candidate"
+    break
+  fi
+done
+
+if [[ -z "$jm" ]]; then
+  if [[ "$prefer_exe" -eq 1 ]]; then
+    echo "jm.exe not found under $vaultRoot. Build with: cd agent && go build -o jm.exe ." >&2
+  else
+    echo "jm not found under $vaultRoot. Build with: cd agent && go build -o jm ." >&2
+  fi
+  exit 1
+fi
+
+export JM_VAULT_ROOT="$vaultRoot"
+exec "$jm" hook "$Event"

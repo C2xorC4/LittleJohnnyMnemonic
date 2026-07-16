@@ -1,7 +1,7 @@
 ---
 name: memory-associator
 description: Mid-workflow memory association check against the LJM knowledge base. Use on topic shifts, design decisions, research discoveries, or natural pauses in focused work. Triggers on /memory-associator.
-compatibility: Requires jm.exe and spawn_subagent.
+compatibility: Requires jm and spawn_subagent.
 ---
 
 # Memory Associator
@@ -31,13 +31,18 @@ spawn_subagent(
 )
 ```
 
-`execute` is required — the associator runs `jm.exe associate` via shell. Use `read-only` only if you run association yourself in the parent and pass results in the prompt.
+`execute` is required — the associator runs `jm associate` via shell. Use `read-only` only if you run association yourself in the parent and pass results in the prompt.
 
 2. Or run directly:
 
-```powershell
-$jm = if ($env:JM_VAULT_ROOT) { Join-Path $env:JM_VAULT_ROOT "agent\jm.exe" } else { "D:\Repos\LLM\LittleJohnnyMnemonic\agent\jm.exe" }
-& $jm associate --no-update "<context description>"
+```bash
+VAULT="${JM_VAULT_ROOT:-}"
+JM=""
+for c in "$VAULT/agent/jm" "$VAULT/jm" "$VAULT/agent/jm.exe" "$VAULT/jm.exe"; do
+  [[ -n "$VAULT" && -x "$c" ]] && JM="$c" && break
+done
+[[ -z "$JM" && -x ./agent/jm ]] && JM=./agent/jm
+"$JM" associate --no-update "<context description>"
 ```
 
 3. Weave relevant connections naturally — don't announce "the associator found..."

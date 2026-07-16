@@ -1,21 +1,36 @@
 ---
 name: memory-associate
 description: Run LittleJohnnyMnemonic contextual association against the current topic. Use when checking what the vault knows about a subject, mid-workflow memory lookup, or when the user asks to associate, recall, or search memory. Triggers on /memory-associate.
-compatibility: Requires jm.exe built in the LJM vault (agent/jm.exe).
+compatibility: Requires jm built in the LJM vault (agent/jm on Unix, agent/jm.exe on Windows).
 ---
 
 # Memory Associate
 
 Run free-text association against the LJM vault and surface relevant memories.
 
+## Resolve vault + jm
+
+Prefer `JM_VAULT_ROOT` (hooks set this). Binary: `agent/jm` (Linux/macOS) or `agent/jm.exe` (Windows); vault-root `jm` / `jm.exe` may symlink.
+
+```bash
+VAULT="${JM_VAULT_ROOT:-}"
+# If unset, walk up from cwd to a directory containing CLAUDE.md + System/
+JM=""
+for c in "$VAULT/agent/jm" "$VAULT/jm" "$VAULT/agent/jm.exe" "$VAULT/jm.exe"; do
+  [[ -n "$VAULT" && -x "$c" ]] && JM="$c" && break
+done
+# Fallback when already inside the vault checkout:
+[[ -z "$JM" && -x ./agent/jm ]] && JM=./agent/jm
+[[ -z "$JM" && -x ./agent/jm.exe ]] && JM=./agent/jm.exe
+```
+
 ## Steps
 
 1. Identify the current topic or activity as a concise phrase (1–2 sentences max).
 2. Run association:
 
-```powershell
-$jm = if ($env:JM_VAULT_ROOT) { Join-Path $env:JM_VAULT_ROOT "agent\jm.exe" } else { "D:\Repos\LLM\LittleJohnnyMnemonic\agent\jm.exe" }
-& $jm associate --no-update "<topic description>"
+```bash
+"$JM" associate --no-update "<topic description>"
 ```
 
 3. Evaluate results:
@@ -38,8 +53,8 @@ When the `user-prompt-submit` hook retrieves memories, it emits:
 
 Use that ID when a loaded memory materially shaped your response:
 
-```powershell
-& $jm associate --cite "Memory/Knowledge/entry_name,how it was used,true" --session <retrieval-session-id>
+```bash
+"$JM" associate --cite "Memory/Knowledge/entry_name,how it was used,true" --session <retrieval-session-id>
 ```
 
 The stop hook also auto-harvests `Memory/` path citations from assistant output against the same retrieval session — manual `--cite` is optional reinforcement.

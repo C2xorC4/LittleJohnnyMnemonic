@@ -24,6 +24,7 @@ benchmarks/runs/*
 !benchmarks/runs/.gitkeep
 
 # ── Build artifacts and rebuildables ─────────────────────────────────────
+/jm
 /jm.exe
 agent/jm
 agent/jm.exe

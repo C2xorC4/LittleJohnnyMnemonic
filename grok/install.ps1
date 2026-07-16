@@ -1,5 +1,6 @@
-# Install LJM Grok hooks, skills, agents, and global rules.
+# Install LJM Grok hooks, skills, agents, and global rules (Windows).
 # Usage: .\grok\install.ps1 [-VaultRoot <path>] [-Uninstall]
+# Linux/macOS: use grok/install.sh (same template, platform-specific runner).
 
 param(
     [string]$VaultRoot = "",
@@ -20,6 +21,9 @@ $skillsDest = Join-Path $grokHome "skills"
 $agentsDest = Join-Path $grokHome "agents"
 $globalGrok = Join-Path $grokHome "GROK.md"
 $configSnippet = Join-Path $grokHome "ljm-config.snippet.toml"
+$hookTemplate = Join-Path $VaultRoot "grok\hooks\ljm.template.json"
+# Native Windows runner — PowerShell invokes run-hook.ps1 (run-hook.cmd is the PATHEXT entry).
+$hookRunner = "powershell -NoProfile -ExecutionPolicy Bypass -File `"$VaultRoot/grok/bin/run-hook.ps1`""
 
 function Ensure-Dir([string]$Path) {
     if (-not (Test-Path -LiteralPath $Path)) {
@@ -36,6 +40,16 @@ function Install-Tree([string]$Source, [string]$Dest) {
         }
         Copy-Item -LiteralPath $_.FullName -Destination $target -Recurse -Force
     }
+}
+
+function Render-Hooks([string]$Template, [string]$Dest, [string]$Runner, [string]$Vault) {
+    if (-not (Test-Path -LiteralPath $Template)) {
+        throw "Hook template missing: $Template"
+    }
+    $content = Get-Content -LiteralPath $Template -Raw
+    $content = $content.Replace('__HOOK_RUNNER__', $Runner)
+    $content = $content.Replace('__JM_VAULT_ROOT__', $Vault)
+    Set-Content -LiteralPath $Dest -Value $content -Encoding UTF8
 }
 
 if ($Uninstall) {
@@ -63,12 +77,9 @@ if (-not (Test-Path -LiteralPath $jm)) {
     Pop-Location
 }
 
-# Hooks — substitute vault root into template
+# Hooks — expand shared template with this platform's runner (global only).
 Ensure-Dir (Join-Path $grokHome "hooks")
-$hookTemplate = Join-Path $VaultRoot ".grok/hooks/ljm.json"
-$hookContent = Get-Content -LiteralPath $hookTemplate -Raw
-$hookContent = $hookContent -replace '__JM_VAULT_ROOT__', $VaultRoot
-Set-Content -LiteralPath $hookDest -Value $hookContent -Encoding UTF8
+Render-Hooks -Template $hookTemplate -Dest $hookDest -Runner $hookRunner -Vault $VaultRoot
 
 # Skills and agents
 Install-Tree (Join-Path $VaultRoot ".grok/skills") $skillsDest
@@ -90,6 +101,7 @@ if (Test-Path -LiteralPath $configTemplate) {
 Write-Host "Installed LJM Grok integration:"
 Write-Host "  Vault:   $VaultRoot"
 Write-Host "  Hooks:   $hookDest"
+Write-Host "  Runner:  $hookRunner"
 Write-Host "  Skills:  $skillsDest\memory-*"
 Write-Host "  Agents:  $agentsDest\memory-*.md"
 Write-Host "  Rules:   $globalGrok"

@@ -9,7 +9,7 @@ agents_md: true
 
 You are a background cognitive process for the LittleJohnnyMnemonic memory system. Check the current conversational context against the stored knowledge base and surface connections that might be useful.
 
-The vault root is `$env:JM_VAULT_ROOT` if set, otherwise `D:\Repos\LLM\LittleJohnnyMnemonic`.
+The vault root is `$JM_VAULT_ROOT` if set. When unset, use the cwd passed to this subagent (should be the vault root) or walk up to a directory containing `CLAUDE.md` and `System/`.
 
 ## What You Receive
 
@@ -19,13 +19,17 @@ A brief description of the current topic, activity, or discussion.
 
 ### 1. Run Association
 
-```powershell
-$vault = if ($env:JM_VAULT_ROOT) { $env:JM_VAULT_ROOT } else { "D:\Repos\LLM\LittleJohnnyMnemonic" }
-cd "$vault/agent"
-.\jm.exe associate --no-update "<context description>"
+```bash
+VAULT="${JM_VAULT_ROOT:-$PWD}"
+JM=""
+for c in "$VAULT/agent/jm" "$VAULT/jm" "$VAULT/agent/jm.exe" "$VAULT/jm.exe"; do
+  [[ -x "$c" ]] && JM="$c" && break
+done
+cd "$VAULT/agent"
+"$JM" associate --no-update "<context description>"
 ```
 
-If `jm.exe` is missing, build first: `go build -o jm.exe .`
+If `jm` is missing, build first: `cd "$VAULT/agent" && go build -o jm .` (Windows: `go build -o jm.exe .`).
 
 ### 2. Evaluate Results
 

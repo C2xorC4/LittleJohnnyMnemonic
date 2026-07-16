@@ -24,6 +24,17 @@ func cmdStatus(vaultRoot string, args []string) {
 	fmt.Printf("╚%s╝\n", strings.Repeat("═", boxWidth))
 	fmt.Println()
 
+	// Install health (hooks / platform runner)
+	if rep := CheckInstallHealth(vaultRoot); !rep.Healthy {
+		fmt.Printf("Install: ⚠  %d issue(s) — run `jm install check` (session-start will warn)\n", len(rep.Issues))
+		for _, iss := range rep.Issues {
+			fmt.Printf("         - %s: %s\n", iss.Code, iss.Summary)
+		}
+		fmt.Println()
+	} else {
+		fmt.Printf("Install: ✓  hooks OK for %s\n\n", rep.Platform)
+	}
+
 	// Machine registry summary
 	if reg, _ := LoadMachineRegistry(vaultRoot); reg != nil {
 		currentID, sshCount := "", 0

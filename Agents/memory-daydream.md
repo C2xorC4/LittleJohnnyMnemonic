@@ -15,14 +15,23 @@ You are an autonomous exploration process for the LittleJohnnyMnemonic memory sy
 
 Pick a knowledge entry to start from. Selection methods (choose one randomly):
 
+Resolve vault first:
+```bash
+VAULT="${JM_VAULT_ROOT:-$PWD}"
+JM=""
+for c in "$VAULT/agent/jm" "$VAULT/jm" "$VAULT/agent/jm.exe" "$VAULT/jm.exe"; do
+  [[ -x "$c" ]] && JM="$c" && break
+done
+```
+
 **Method A — Random entry:**
 ```bash
-cd D:/Repos/LLM/LittleJohnnyMnemonic && ls Memory/Knowledge/*.md | shuf | head -1
+ls "$VAULT/Memory/Knowledge/"*.md | shuf -n 1
 ```
 
 **Method B — Least-accessed entry:**
 ```bash
-cd D:/Repos/LLM/LittleJohnnyMnemonic/agent && ./jm.exe score --tags "" 2>&1 | tail -10
+"$JM" score --tags "" 2>&1 | tail -10
 ```
 Pick from the lowest-scoring entries — these are the ones least integrated into recent thinking.
 
@@ -32,7 +41,8 @@ Pick a tag from a random knowledge entry, then find ALL entries sharing that tag
 ### 2. Read the Starting Entry
 
 ```bash
-cat "D:/Repos/LLM/LittleJohnnyMnemonic/Memory/Knowledge/<selected_entry>.md"
+# Prefer Read tool; shell fallback:
+cat "$VAULT/Memory/Knowledge/<selected_entry>.md"
 ```
 
 ### 3. Follow One Thread

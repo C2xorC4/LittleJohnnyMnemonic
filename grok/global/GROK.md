@@ -1,10 +1,10 @@
 # LittleJohnnyMnemonic — Default Memory System
 
-This host uses **LittleJohnnyMnemonic (LJM)** as the default memory substrate for all Grok Build sessions. LJM is wired globally via hooks in `~/.grok/hooks/ljm.json` — it is **not** project-scoped; it operates in every working directory.
+This host uses **LittleJohnnyMnemonic (LJM)** as the default memory substrate for all Grok Build sessions. LJM is wired globally via hooks in `~/.grok/hooks/ljm.json` — it is **not** project-scoped; it operates in every working directory. Do not add a live project-level `ljm.json` under `<vault>/.grok/hooks/` (installers own the global file only).
 
 ## Vault Location
 
-`D:\Repos\LLM\LittleJohnnyMnemonic\` (override with `JM_VAULT_ROOT`)
+Set by install (`JM_VAULT_ROOT` in hooks). Override with `JM_VAULT_ROOT` in the environment.
 
 - `Buffer/` — short-term memory; write new observations here during conversation
 - `Memory/` — long-term memory (`User/`, `Feedback/`, `Project/`, `Reference/`, `Semantic/`, `Episodic/`, `Knowledge/`)
@@ -37,16 +37,18 @@ Context is injected by LJM hooks — do not rely on static copies of this file f
 
 ## Skills and Agents
 
-Installed to `~/.grok/skills/` and `~/.grok/agents/` by `grok/install.ps1`:
+Installed to `~/.grok/skills/` and `~/.grok/agents/` by `grok/install.sh` (Linux/macOS) or `grok/install.ps1` (Windows):
 
 - `/memory-associate` — run `jm associate` against current context
 - `/memory-consolidate` — run buffer consolidation
 - `/memory-buffer` — inspect or write buffer entries
 - `/memory-daydream` — launch daydream volley (`spawn_subagent`, `capability_mode: all`, `background: true`)
-- `/memory-associator` — background association (`capability_mode: execute` for `jm.exe`)
+- `/memory-associator` — background association (`capability_mode: execute` for `jm`)
 
 **Daydream volley spawn** (on `<daydream-nudge>` or `/memory-daydream`): at least one topic seed + one random walk, both via `subagent_type: memory-daydream`, `cwd` set to vault root.
 
+**Binary:** `agent/jm` (Unix) or `agent/jm.exe` (Windows). Vault-root `jm` / `jm.exe` may symlink to the agent binary.
+
 Optional: merge `~/.grok/ljm-config.snippet.toml` into `config.toml` after install for model routing.
 
-Reinstall after vault moves: `.\grok\install.ps1 -VaultRoot <path>`
+Reinstall after vault moves: `./grok/install.sh --vault-root <path>` or `.\grok\install.ps1 -VaultRoot <path>`.
